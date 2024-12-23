@@ -43,8 +43,9 @@ class SafeRouteRecommender:
             'driving under the influence': 1
         }
 
-    def load_crime_data(self, csv_path, time_window_days=365):
+    def load_crime_data(self, csv_path, time_window_days=3650):
         self.crime_data = pd.read_csv(csv_path, low_memory=False)
+        self.total_crime_data = self.crime_data
 
         self.crime_data['date_single'] = pd.to_datetime(
             self.crime_data['date_single'],
@@ -61,6 +62,7 @@ class SafeRouteRecommender:
         self.crime_data['severity'] = self.crime_data['severity'].fillna(1)
 
         self.crime_data = self.crime_data.dropna(subset=['longitude', 'latitude'])
+
 
     def get_routes(self, start_location, end_location, mode="driving"):
         try:
@@ -227,8 +229,10 @@ def visualize_routes_with_heatmap(scored_routes, start_location, end_location, c
         f"Distance: {fastest_route['distance']/1000:.2f}km<br>Duration: {fastest_route['duration']}"
     )
 
+
     heatmap_data = [[row['latitude'], row['longitude']] for _, row in crime_data.iterrows()]
     HeatMap(heatmap_data, radius=15).add_to(feature_group_heatmap)
+    
 
     m.add_child(feature_group_safe)
     m.add_child(feature_group_moderate)
@@ -258,4 +262,4 @@ if __name__ == "__main__":
     end = (41.9484, -87.6553)
 
     routes = recommender.recommend_routes(start, end)
-    visualize_routes_with_heatmap(routes, start, end, recommender.crime_data)
+    visualize_routes_with_heatmap(routes, start, end, recommender.total_crime_data)
