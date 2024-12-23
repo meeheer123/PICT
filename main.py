@@ -3,10 +3,8 @@ import numpy as np
 from geopy.distance import geodesic
 import googlemaps
 import polyline
-import hashlib
 from datetime import datetime, timedelta
 import folium
-from folium import plugins
 
 class SafeRouteRecommender:
     def __init__(self, api_key):
@@ -164,42 +162,17 @@ class SafeRouteRecommender:
             })
         
         scored_routes.sort(key=lambda x: x['safety_score'])
-        
-        if len(scored_routes) > 1:
-            max_score = max(r['safety_score'] for r in scored_routes)
-            min_score = min(r['safety_score'] for r in scored_routes)
-            score_range = max_score - min_score if max_score != min_score else 1
-            
-            for route in scored_routes:
-                normalized_score = (route['safety_score'] - min_score) / score_range
-                if normalized_score <= 0.33:
-                    route['safety_category'] = 'safe'
-                    route['color'] = 'green'
-                elif normalized_score <= 0.66:
-                    route['safety_category'] = 'moderate'
-                    route['color'] = 'orange'
-                else:
-                    route['safety_category'] = 'unsafe'
-                    route['color'] = 'red'
-        else:
-            # If only one route, classify based on absolute score
-            route = scored_routes[0]
-            if route['safety_score'] <= 5:
-                route['safety_category'] = 'safe'
-                route['color'] = 'green'
-            elif route['safety_score'] <= 10:
-                route['safety_category'] = 'moderate'
-                route['color'] = 'orange'
-            else:
-                route['safety_category'] = 'unsafe'
-                route['color'] = 'red'
-        
         return scored_routes
 
-def visualize_routes(scored_routes, start_location, end_location):
+def visualize_routes_with_filter(scored_routes, start_location, end_location):
     if not scored_routes:
         print("No routes to visualize")
         return
+    
+    fastest_route = min(scored_routes, key=lambda r: r['route']['legs'][0]['duration']['value'])
+    safest_route = min(scored_routes, key=lambda r: r['safety_score'])
+    scored_routes_sorted = sorted(scored_routes, key=lambda r: r['safety_score'])
+    moderate_route = scored_routes_sorted[len(scored_routes_sorted) // 2]
     
     center_lat = (start_location[0] + end_location[0]) / 2
     center_lon = (start_location[1] + end_location[1]) / 2
@@ -207,53 +180,75 @@ def visualize_routes(scored_routes, start_location, end_location):
     
     legend_html = """
     <div style="position: fixed; bottom: 50px; left: 50px; z-index: 1000; background-color: white; padding: 10px; border: 2px solid grey; border-radius: 5px">
-        <p><strong>Route Safety:</strong></p>
-        <p><span style="color: green;">⬤</span> Safe</p>
-        <p><span style="color: orange;">⬤</span> Moderate</p>
-        <p><span style="color: red;">⬤</span> Unsafe</p>
+        <p><strong>Route Safety Legend:</strong></p>
+        <p><span style="color: green;">⬤</span> Safest Route</p>
+        <p><span style="color: yellow;">⬤</span> Moderate Route</p>
+        <p><span style="color: red;">⬤</span> Fastest Route (based on severity)</p>
     </div>
     """
     m.get_root().html.add_child(folium.Element(legend_html))
     
-    feature_group = folium.FeatureGroup(name="Routes")
-
-    for i, route in enumerate(scored_routes):
+    def add_route_to_map(route, group, color, popup_info):
         path_points = polyline.decode(route['polyline'])
-
-        popup_text = (
-            f"Safety Category: {route['safety_category']}<br>"
-            f"Safety Score: {route['safety_score']:.2f}<br>"
-            f"Severity Score: {route['severity_score']:.2f}<br>"
-            f"Total Crimes: {route['crime_count']}<br>"
-            f"Distance: {route['distance']/1000:.2f}km<br>"
-            f"Duration: {route['duration']}"
-        )
-
         line = folium.PolyLine(
             locations=path_points,
-            color=route['color'],
-            weight=4,
+            color=color,
+            weight=5,
             opacity=0.8,
-            popup=folium.Popup(popup_text, max_width=300)
+            popup=folium.Popup(popup_info, max_width=300)
         )
-        feature_group.add_child(line)
-
-    m.add_child(feature_group)
+        group.add_child(line)
+    
+    feature_group_safe = folium.FeatureGroup(name="Safest Route", show=True)
+    feature_group_moderate = folium.FeatureGroup(name="Moderate Route", show=False)
+    feature_group_fastest = folium.FeatureGroup(name="Fastest Route", show=False)
+    
+    add_route_to_map(
+        safest_route,
+        feature_group_safe,
+        "green",
+        f"Safest Route<br>Safety Score: {safest_route['safety_score']:.2f}<br>"
+        f"Severity Score: {safest_route['severity_score']:.2f}<br>Total Crimes: {safest_route['crime_count']}<br>"
+        f"Distance: {safest_route['distance']/1000:.2f}km<br>Duration: {safest_route['duration']}"
+    )
+    
+    add_route_to_map(
+        moderate_route,
+        feature_group_moderate,
+        "yellow",
+        f"Moderate Route<br>Safety Score: {moderate_route['safety_score']:.2f}<br>"
+        f"Severity Score: {moderate_route['severity_score']:.2f}<br>Total Crimes: {moderate_route['crime_count']}<br>"
+        f"Distance: {moderate_route['distance']/1000:.2f}km<br>Duration: {moderate_route['duration']}"
+    )
+    
+    fastest_route_color = "red" if fastest_route['safety_score'] > 5 else "green" if fastest_route['safety_score'] <= 3 else "orange"
+    add_route_to_map(
+        fastest_route,
+        feature_group_fastest,
+        fastest_route_color,
+        f"Fastest Route<br>Safety Score: {fastest_route['safety_score']:.2f}<br>"
+        f"Severity Score: {fastest_route['severity_score']:.2f}<br>Total Crimes: {fastest_route['crime_count']}<br>"
+        f"Distance: {fastest_route['distance']/1000:.2f}km<br>Duration: {fastest_route['duration']}"
+    )
+    
+    m.add_child(feature_group_safe)
+    m.add_child(feature_group_moderate)
+    m.add_child(feature_group_fastest)
     m.add_child(folium.LayerControl())
-
+    
     folium.Marker(
         start_location,
         popup='Start',
         icon=folium.Icon(color='green', icon='info-sign')
     ).add_to(m)
-
+    
     folium.Marker(
         end_location,
         popup='End',
         icon=folium.Icon(color='red', icon='info-sign')
     ).add_to(m)
-
-    m.save('safe_routes_map.html')
+    
+    m.save('filtered_routes_map.html')
 
 if __name__ == "__main__":
     recommender = SafeRouteRecommender('AIzaSyAnAszR8yWJ-xrdN61WpGU4ki08WXygS64')
@@ -263,4 +258,4 @@ if __name__ == "__main__":
     end = (41.9484, -87.6553)
 
     routes = recommender.recommend_routes(start, end)
-    visualize_routes(routes, start, end)
+    visualize_routes_with_filter(routes, start, end)
