@@ -161,7 +161,7 @@ class SafeRouteRecommender:
         scored_routes.sort(key=lambda x: x['safety_score'])
         return scored_routes
 
-def visualize_routes_with_heatmap(scored_routes, start_location, end_location, crime_data):
+def visualize_routes_with_heatmap(scored_routes, start_location, end_location, crime_data, i):
     if not scored_routes:
         print("No routes to visualize")
         return
@@ -252,14 +252,22 @@ def visualize_routes_with_heatmap(scored_routes, start_location, end_location, c
         icon=folium.Icon(color='red', icon='info-sign')
     ).add_to(m)
 
-    m.save('routes_with_heatmap.html')
+    m.save(f'routes_with_heatmap{i}.html')
 
 if __name__ == "__main__":
     recommender = SafeRouteRecommender('AIzaSyAnAszR8yWJ-xrdN61WpGU4ki08WXygS64')
     recommender.load_crime_data('datasets/crime_open_database_core_2022.csv')
 
-    start = (41.8781, -87.6298)
-    end = (41.9484, -87.6553)
+    routes_data = [
+        ((41.8781, -87.6298), (41.9484, -87.6553)),  # Example 1
+        ((41.7906, -87.5858), (41.7508, -87.6297)),  # Example 2
+        ((41.8369, -87.6847), (41.8675, -87.6169)),  # Example 3
+        ((41.8526, -87.6189), (41.8807, -87.6233)),  # Example 4
+        ((41.9762, -87.6592), (41.9643, -87.6466)),  # Example 5
+    ]
 
-    routes = recommender.recommend_routes(start, end)
-    visualize_routes_with_heatmap(routes, start, end, recommender.total_crime_data)
+    for i, (start, end) in enumerate(routes_data, start=1):
+        print(f"Generating routes and heatmap for route {i}...")
+        routes = recommender.recommend_routes(start, end)
+        visualize_routes_with_heatmap(routes, start, end, recommender.total_crime_data, i)
+        print(f"Route {i} visualization complete. Check 'routes_with_heatmap.html'.")
