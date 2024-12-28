@@ -1,12 +1,13 @@
 package main
 
 import (
+    "container/heap"
     "encoding/json"
     "fmt"
+    "html/template"
     "math"
     "os"
     "sync"
-    "container/heap"
 )
 
 // Constants for Chicago boundaries
@@ -91,6 +92,13 @@ func (pq *PriorityQueue) Pop() interface{} {
     item.index = -1
     *pq = old[0 : n-1]
     return item
+}
+
+// MapData represents the data needed for the map template
+type MapData struct {
+    Center     Point
+    Zoom       int
+    GeoJSONStr template.JS
 }
 
 // NewGraph creates a new road network graph
@@ -283,7 +291,6 @@ func isInBounds(p Point, bounds Bounds) bool {
 
 // FindRoute implements A* pathfinding algorithm
 func (r *RiskAwareRouter) FindRoute(start, end Point, alpha float64) ([]Point, float64, float64, error) {
-    // Find nearest points in the graph
     nearestStart := r.findNearestPoint(start)
     nearestEnd := r.findNearestPoint(end)
 
@@ -378,7 +385,166 @@ func (r *RiskAwareRouter) calculateEdgeWeight(edge Edge, alpha float64) float64 
     return weight
 }
 
-// CreateRouteGeoJSON generates GeoJSON output for the routes
+// HTML template for the map
+const mapTemplate = `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chicago Risk-Aware Routes</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <style>
+        #map {
+            height: 800px;
+            width: 100%;
+        }
+        .legend {
+            line-height: 18px;
+            color: #555;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .legend i {
+            width: 18px;
+            height: 18px;
+            float: left;
+            margin-right: 8px;
+            opacity: 0.7;
+        }
+        .info {
+            padding: 6px 8px;
+            font: 14px/16px Arial, Helvetica, sans-serif;
+            background: white;
+            background: rgba(255,255,255,0.8);
+            box-shadow: 0 0 15px rgba(0,0,0,0.2);
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
+    <script>
+        var map = L.map('map').setView([{{.Center.Y}}, {{.Center.X}}], {{.Zoom}});
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        var geojsonData = {{.GeoJSONStr}};
+        
+        // Create heatmap layer from risk data
+        var heatmapPoints = [];
+        geojsonData.features.forEach(function(feature) {
+            if (feature.properties.risk_score !== undefined) {
+                var coords = feature.geometry.coordinates;
+                heatmapPoints.push([
+                    coords[1], 
+                    coords[0], 
+                    feature.properties.risk_score
+                ]);
+            }
+        });
+
+        var heatmapLayer = L.heatLayer(heatmapPoints, {
+            radius: 20,
+            blur: 15,
+            maxZoom: 15,
+            gradient: {
+                0.2: '#00ff00',
+                0.4: '#ffff00',
+                0.6: '#ff9900',
+                0.8: '#ff0000'
+            }
+        });
+
+        // Create layers for each path type
+        var pathColors = {
+            0.00: {color: '#0000FF', name: 'Shortest Path (α=0.00)'},
+            0.25: {color: '#00FF00', name: 'Low Risk (α=0.25)'},
+            0.50: {color: '#FFD700', name: 'Balanced (α=0.50)'},
+            0.75: {color: '#FFA500', name: 'Safety Priority (α=0.75)'}
+        };
+
+        var pathLayers = {};
+        
+        geojsonData.features.forEach(function(feature) {
+            if (feature.properties.alpha !== undefined) {
+                var alpha = feature.properties.alpha;
+                var pathStyle = {
+                    color: pathColors[alpha].color,
+                    weight: 5,
+                    opacity: 0.8
+                };
+
+                var layer = L.geoJSON(feature, {
+                    style: pathStyle,
+                    onEachFeature: function(feature, layer) {
+                        layer.bindPopup(
+                            pathColors[alpha].name + '<br>' +
+                            'Distance: ' + feature.properties.distance.toFixed(2) + ' units<br>' +
+                            'Risk Score: ' + feature.properties.risk.toFixed(2)
+                        );
+                    }
+                });
+
+                pathLayers[pathColors[alpha].name] = layer;
+                layer.addTo(map);
+            }
+        });
+
+        // Add markers for start and end points
+        geojsonData.features.forEach(function(feature) {
+            if (feature.properties.name) {
+                var coords = feature.geometry.coordinates;
+                L.circleMarker([coords[1], coords[0]], {
+                    radius: 8,
+                    fillColor: feature.properties.color,
+                    color: "#000",
+                    weight: 1,
+                    opacity: 1,
+                    fillOpacity: 0.8
+                }).bindPopup(feature.properties.name).addTo(map);
+            }
+        });
+
+        // Add layer controls
+        var overlayMaps = {
+            "Risk Heatmap": heatmapLayer,
+            ...pathLayers
+        };
+
+        L.control.layers(null, overlayMaps, {
+            collapsed: false
+        }).addTo(map);
+
+        // Add legend
+        var legend = L.control({position: 'bottomright'});
+        legend.onAdd = function(map) {
+            var div = L.DomUtil.create('div', 'legend info');
+            div.innerHTML = '<h4>Risk Levels</h4>';
+            div.innerHTML += '<i style="background: linear-gradient(to right, #00ff00, #ffff00, #ff9900, #ff0000)"></i>Low → High<br>';
+            div.innerHTML += '<h4>Routes</h4>';
+            
+            Object.values(pathColors).forEach(function(info) {
+                div.innerHTML += 
+                    '<i style="background: ' + info.color + '"></i>' +
+                    info.name + '<br>';
+            });
+            
+            return div;
+        };
+        legend.addTo(map);
+    </script>
+</body>
+</html>
+`
+
+// Update CreateRouteGeoJSON to include risk scores
 func (r *RiskAwareRouter) CreateRouteGeoJSON(start, end Point, alphas []float64) ([]byte, error) {
     if err := r.validatePoints(start, end); err != nil {
         return nil, err
@@ -410,13 +576,7 @@ func (r *RiskAwareRouter) CreateRouteGeoJSON(start, end Point, alphas []float64)
         })
     }
 
-    colors := map[float64]string{
-        0.00: "#0000FF", // blue
-        0.25: "#00FF00", // green
-        0.50: "#FFFF00", // yellow
-        0.75: "#FFA500", // orange
-    }
-
+    // Add different alpha paths
     for _, alpha := range alphas {
         path, distance, risk, err := r.FindRoute(start, end, alpha)
         if err != nil {
@@ -436,7 +596,6 @@ func (r *RiskAwareRouter) CreateRouteGeoJSON(start, end Point, alphas []float64)
                     "alpha":       alpha,
                     "distance":    distance,
                     "risk":        risk,
-                    "color":       colors[alpha],
                     "description": fmt.Sprintf("Route α=%.2f", alpha),
                 },
                 "geometry": map[string]interface{}{
@@ -447,15 +606,82 @@ func (r *RiskAwareRouter) CreateRouteGeoJSON(start, end Point, alphas []float64)
         }
     }
 
-    if len(features) <= 2 { // Only has start/end points
+    // Add risk score points for heatmap
+    r.G.mu.RLock()
+    for start, edges := range r.G.Edges {
+        for _, edge := range edges {
+            features = append(features, map[string]interface{}{
+                "type": "Feature",
+                "properties": map[string]interface{}{
+                    "risk_score": edge.RiskScore,
+                },
+                "geometry": map[string]interface{}{
+                    "type": "Point",
+                    "coordinates": []float64{start.X, start.Y},
+                },
+            })
+        }
+    }
+    r.G.mu.RUnlock()
+
+    if len(features) <= 2 {
         return nil, fmt.Errorf("failed to generate any valid routes")
     }
-geojson := map[string]interface{}{
+
+    geojson := map[string]interface{}{
         "type":     "FeatureCollection",
         "features": features,
     }
 
     return json.MarshalIndent(geojson, "", "  ")
+}
+
+// GenerateMap creates an HTML map file with the routes
+func (r *RiskAwareRouter) GenerateMap(start, end Point, alphas []float64, outputPath string) error {
+    // Generate GeoJSON
+    geojsonOutput, err := r.CreateRouteGeoJSON(start, end, alphas)
+    if err != nil {
+        return fmt.Errorf("error creating route GeoJSON: %v", err)
+    }
+
+    // Parse the GeoJSON to get the center point
+    var geojsonData map[string]interface{}
+    if err := json.Unmarshal(geojsonOutput, &geojsonData); err != nil {
+        return fmt.Errorf("error parsing GeoJSON: %v", err)
+    }
+
+    // Calculate the center point between start and end
+    center := Point{
+        X: (start.X + end.X) / 2,
+        Y: (start.Y + end.Y) / 2,
+    }
+
+    // Prepare template data
+    mapData := MapData{
+        Center:     center,
+        Zoom:       12,
+        GeoJSONStr: template.JS(string(geojsonOutput)),
+    }
+
+    // Create and parse template
+    tmpl, err := template.New("map").Parse(mapTemplate)
+    if err != nil {
+        return fmt.Errorf("error parsing template: %v", err)
+    }
+
+    // Create output file
+    file, err := os.Create(outputPath)
+    if err != nil {
+        return fmt.Errorf("error creating output file: %v", err)
+    }
+    defer file.Close()
+
+    // Execute template
+    if err := tmpl.Execute(file, mapData); err != nil {
+        return fmt.Errorf("error executing template: %v", err)
+    }
+
+    return nil
 }
 
 func main() {
@@ -479,28 +705,14 @@ func main() {
     fmt.Printf("Start point: (%f, %f)\n", start.X, start.Y)
     fmt.Printf("End point: (%f, %f)\n", end.X, end.Y)
 
-    // Check if start and end points have any edges
-    router.G.mu.RLock()
-    startEdges := len(router.G.Edges[start])
-    endEdges := len(router.G.Edges[end])
-    router.G.mu.RUnlock()
-
-    fmt.Printf("Number of edges from start point: %d\n", startEdges)
-    fmt.Printf("Number of edges to end point: %d\n", endEdges)
-
     alphas := []float64{0.00, 0.25, 0.50, 0.75}
 
-    geojsonOutput, err := router.CreateRouteGeoJSON(start, end, alphas)
+    // Generate interactive HTML map
+    err = router.GenerateMap(start, end, alphas, "routes_map.html")
     if err != nil {
-        fmt.Printf("Error creating route GeoJSON: %v\n", err)
+        fmt.Printf("Error generating map: %v\n", err)
         return
     }
 
-    err = os.WriteFile("routes.geojson", geojsonOutput, 0644)
-    if err != nil {
-        fmt.Printf("Error writing GeoJSON file: %v\n", err)
-        return
-    }
-
-    fmt.Println("Successfully generated routes and saved to routes.geojson")
+    fmt.Println("Successfully generated interactive map at routes_map.html")
 }
