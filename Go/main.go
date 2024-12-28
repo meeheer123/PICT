@@ -437,28 +437,35 @@ const mapTemplate = `
 
         var geojsonData = {{.GeoJSONStr}};
         
-        // Create heatmap layer from risk data
+        // Create heatmap layer from risk data with improved parameters
         var heatmapPoints = [];
         geojsonData.features.forEach(function(feature) {
             if (feature.properties.risk_score !== undefined) {
                 var coords = feature.geometry.coordinates;
-                heatmapPoints.push([
-                    coords[1], 
-                    coords[0], 
-                    feature.properties.risk_score
-                ]);
+                // Scale down the intensity and add more points for smoother gradient
+                for (var i = 0; i < 3; i++) {
+                    var jitter = (Math.random() - 0.5) * 0.0001; // Small random offset
+                    heatmapPoints.push([
+                        coords[1] + jitter, 
+                        coords[0] + jitter, 
+                        feature.properties.risk_score * 0.3 // Reduced intensity
+                    ]);
+                }
             }
         });
 
         var heatmapLayer = L.heatLayer(heatmapPoints, {
-            radius: 20,
-            blur: 15,
+            radius: 25,          // Increased radius
+            blur: 20,            // Increased blur
             maxZoom: 15,
-            gradient: {
-                0.2: '#00ff00',
-                0.4: '#ffff00',
-                0.6: '#ff9900',
-                0.8: '#ff0000'
+            minOpacity: 0.3,     // Set minimum opacity
+            max: 1.0,            // Maximum point intensity
+            gradient: {          // Smoother gradient similar to Folium
+                0.0: '#2b83ba',  // Cool blue
+                0.2: '#abdda4',  // Light blue-green
+                0.4: '#ffffbf',  // Light yellow
+                0.6: '#fdae61',  // Light orange
+                0.8: '#d7191c'   // Dark red
             }
         });
 
@@ -522,12 +529,12 @@ const mapTemplate = `
             collapsed: false
         }).addTo(map);
 
-        // Add legend
+        // Add legend with updated gradient colors
         var legend = L.control({position: 'bottomright'});
         legend.onAdd = function(map) {
             var div = L.DomUtil.create('div', 'legend info');
             div.innerHTML = '<h4>Risk Levels</h4>';
-            div.innerHTML += '<i style="background: linear-gradient(to right, #00ff00, #ffff00, #ff9900, #ff0000)"></i>Low → High<br>';
+            div.innerHTML += '<i style="background: linear-gradient(to right, #2b83ba, #abdda4, #ffffbf, #fdae61, #d7191c)"></i>Low → High<br>';
             div.innerHTML += '<h4>Routes</h4>';
             
             Object.values(pathColors).forEach(function(info) {
