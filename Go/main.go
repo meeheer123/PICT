@@ -369,7 +369,7 @@ func handleRouteRequest(w http.ResponseWriter, r *http.Request) {
     }
  
     crimeData := &CrimeData{}
-    router, err := NewRiskAwareRouter("../datasets/chicago_roads_with_risk.geojson", crimeData)
+    router, err := NewRiskAwareRouter("chicago_roads_with_risk.geojson", crimeData)
     if err != nil {
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return
