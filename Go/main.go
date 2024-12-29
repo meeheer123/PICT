@@ -373,7 +373,7 @@ func handleRouteRequest(w http.ResponseWriter, r *http.Request) {
     if err != nil {
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return
-    }
+    } 
  
     start := Point{X: req.StartX, Y: req.StartY}
     end := Point{X: req.EndX, Y: req.EndY}
