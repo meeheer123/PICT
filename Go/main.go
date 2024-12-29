@@ -59,6 +59,23 @@ type Item struct {
 
 type PriorityQueue []*Item
 
+func enableCors(handler http.HandlerFunc) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        // Set CORS headers
+        w.Header().Set("Access-Control-Allow-Origin", "*")
+        w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+        w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+        // Handle preflight requests
+        if r.Method == "OPTIONS" {
+            w.WriteHeader(http.StatusOK)
+            return
+        }
+
+        handler(w, r)
+    }
+}
+
 func (pq PriorityQueue) Len() int { return len(pq) }
 func (pq PriorityQueue) Less(i, j int) bool { return pq[i].priority < pq[j].priority }
 func (pq PriorityQueue) Swap(i, j int) {
@@ -334,63 +351,72 @@ func (r *RiskAwareRouter) calculateEdgeWeight(edge Edge, alpha float64) float64 
 }
 
 func handleRouteRequest(w http.ResponseWriter, r *http.Request) {
-   if r.Method != http.MethodPost {
-       http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-       return
-   }
+    if r.Method != http.MethodPost {
+        http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
+ 
+    var req struct {
+        StartX float64 `json:"start_x"`
+        StartY float64 `json:"start_y"`
+        EndX   float64 `json:"end_x"`
+        EndY   float64 `json:"end_y"`
+    }
+ 
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        http.Error(w, err.Error(), http.StatusBadRequest)
+        return
+    }
+ 
+    crimeData := &CrimeData{}
+    router, err := NewRiskAwareRouter("../datasets/chicago_roads_with_risk.geojson", crimeData)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+ 
+    start := Point{X: req.StartX, Y: req.StartY}
+    end := Point{X: req.EndX, Y: req.EndY}
+    alphas := []float64{0.00, 0.25, 0.50, 0.75}
+ 
+    routes, err := router.calculateRoutes(start, end, alphas)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+ 
+    center := Point{
+        X: (start.X + end.X) / 2,
+        Y: (start.Y + end.Y) / 2,
+    }
+ 
+    response := struct {
+        Routes     []Route `json:"routes"`
+        Center     Point   `json:"center"`
+        StartPoint Point   `json:"start"`
+        EndPoint   Point   `json:"end"`
+    }{
+        Routes:     routes,
+        Center:     center,
+        StartPoint: start,
+        EndPoint:   end,
+    }
+ 
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(response)
+ }
 
-   var req struct {
-       StartX float64 `json:"start_x"`
-       StartY float64 `json:"start_y"`
-       EndX   float64 `json:"end_x"`
-       EndY   float64 `json:"end_y"`
-   }
+ func main() {
+    // Get port from environment variable or use default
+    port := os.Getenv("PORT")
+    if port == "" {
+        port = "8080"
+    }
 
-   if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-       http.Error(w, err.Error(), http.StatusBadRequest)
-       return
-   }
+    // Set up routes with CORS
+    http.HandleFunc("/route", enableCors(handleRouteRequest))
 
-   crimeData := &CrimeData{}
-   router, err := NewRiskAwareRouter("../datasets/chicago_roads_with_risk.geojson", crimeData)
-   if err != nil {
-       http.Error(w, err.Error(), http.StatusInternalServerError)
-       return
-   }
-
-   start := Point{X: req.StartX, Y: req.StartY}
-   end := Point{X: req.EndX, Y: req.EndY}
-   alphas := []float64{0.00, 0.25, 0.50, 0.75}
-
-   routes, err := router.calculateRoutes(start, end, alphas)
-   if err != nil {
-       http.Error(w, err.Error(), http.StatusInternalServerError)
-       return
-   }
-
-   center := Point{
-       X: (start.X + end.X) / 2,
-       Y: (start.Y + end.Y) / 2,
-   }
-
-   response := struct {
-       Routes     []Route `json:"routes"`
-       Center     Point   `json:"center"`
-       StartPoint Point   `json:"start"`
-       EndPoint   Point   `json:"end"`
-   }{
-       Routes:     routes,
-       Center:     center,
-       StartPoint: start,
-       EndPoint:   end,
-   }
-
-   w.Header().Set("Content-Type", "application/json")
-   json.NewEncoder(w).Encode(response)
-}
-
-func main() {
-   http.HandleFunc("/route", handleRouteRequest)
-   log.Printf("Server starting on :8080")
-   log.Fatal(http.ListenAndServe(":8080", nil))
+    // Start server with dynamic port
+    log.Printf("Server starting on port %s", port)
+    log.Fatal(http.ListenAndServe(":"+port, nil))
 }
