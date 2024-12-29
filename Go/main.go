@@ -440,33 +440,33 @@ const mapTemplate = `
         // Create heatmap layer with improved settings
         var heatmapPoints = [];
         geojsonData.features.forEach(function(feature) {
-            if (feature.properties.risk_score !== undefined) {
-                var coords = feature.geometry.coordinates;
-                // Add multiple points with small offsets for smoother appearance
-                for (var i = 0; i < 2; i++) {
-                    var jitter = (Math.random() - 0.5) * 0.0001;
-                    heatmapPoints.push([
-                        coords[1] + jitter, 
-                        coords[0] + jitter, 
-                        feature.properties.risk_score * 0.4
-                    ]);
-                }
+        if (feature.properties.risk_score !== undefined) {
+            var coords = feature.geometry.coordinates;
+            for (var i = 0; i < 3; i++) {
+                var jitter = (Math.random() - 0.5) * 0.00008;
+                heatmapPoints.push([
+                    coords[1] + jitter,
+                    coords[0] + jitter,
+                    feature.properties.risk_score * 0.6  // Increased intensity multiplier
+                ]);
             }
+        }
         });
 
         var heatmapLayer = L.heatLayer(heatmapPoints, {
-            radius: 20,           // Smaller radius for better detail
-            blur: 25,            // Increased blur for smoother gradients
-            maxZoom: 17,
-            minOpacity: 0.4,     // Increased minimum opacity
-            max: 1.0,
-            gradient: {          // Folium-style gradient
-                0.0: '#2b83ba',  // Cool blue
-                0.2: '#abdda4',  // Light blue-green
-                0.4: '#ffffbf',  // Light yellow
-                0.6: '#fdae61',  // Light orange
-                0.8: '#d7191c'   // Dark red
-            }
+        radius: 15,
+        blur: 20, 
+        maxZoom: 18,
+        minOpacity: 0.6,    // Increased minimum opacity
+        max: 0.9,           // Increased max intensity
+        gradient: {
+            0.0: '#1a237e', // Darker blue
+            0.2: '#283593', // Deep purple-blue
+            0.4: '#512da8', // Deep purple
+            0.6: '#b71c1c', // Deep red
+            0.8: '#8b0000', // Dark red
+            1.0: '#4a0404'  // Very dark red
+        }
         });
 
         // Create layers for each path type
