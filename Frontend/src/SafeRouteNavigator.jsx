@@ -13,7 +13,9 @@ const center = {
 };
 
 const routeColors = ["#FF0000", "#00FF00", "#0000FF", "#FFFF00"];
-const NAVIGATION_ARROW = "M12 0L7 20L12 17L17 20L12 0Z";
+// Adjusted arrow path to fix rotation and positioning issues
+// Center point at (0,0), arrow pointing straight up
+const NAVIGATION_ARROW = "M0 10L-5 -10L0 -7L5 -10L0 10Z";
 
 const SafeRouteNavigator = () => {
   const { isLoaded } = useJsApiLoader({
@@ -263,7 +265,7 @@ const SafeRouteNavigator = () => {
                 strokeColor: '#FFFFFF',
                 scale: 1.5,
                 rotation: deviceOrientation,
-                anchor: new window.google.maps.Point(12, 20)
+                anchor: new window.google.maps.Point(0, 0)  // Center anchor point
               }}
             />
           </>
