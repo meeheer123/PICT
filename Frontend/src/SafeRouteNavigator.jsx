@@ -13,6 +13,7 @@ const center = {
 };
 
 const routeColors = ["#FF0000", "#00FF00", "#0000FF", "#FFFF00"];
+const NAVIGATION_ARROW = "M12 2L8 12L12 10L16 12L12 2Z";
 
 const SafeRouteNavigator = () => {
   const { isLoaded } = useJsApiLoader({
@@ -21,11 +22,23 @@ const SafeRouteNavigator = () => {
   });
 
   const [map, setMap] = useState(null);
+  const [mapRef, setMapRef] = useState(null);
   const [routes, setRoutes] = useState([]);
   const [userPosition, setUserPosition] = useState(null);
+  const [deviceOrientation, setDeviceOrientation] = useState(0);
   const [visibleRoutes, setVisibleRoutes] = useState([true, true, true, true]);
   const [startPoint, setStartPoint] = useState(null);
   const [endPoint, setEndPoint] = useState(null);
+
+  const handleDeviceOrientation = (event) => {
+    if (event.webkitCompassHeading) {
+      // iOS devices
+      setDeviceOrientation(event.webkitCompassHeading);
+    } else if (event.alpha) {
+      // Android devices
+      setDeviceOrientation(360 - event.alpha);
+    }
+  };
 
   const onLoad = useCallback((map) => {
     const mapOptions = {
@@ -36,6 +49,7 @@ const SafeRouteNavigator = () => {
     };
     map.setOptions(mapOptions);
     setMap(map);
+    setMapRef(map);
   }, []);
 
   const onUnmount = useCallback(() => {
@@ -44,7 +58,31 @@ const SafeRouteNavigator = () => {
 
   useEffect(() => {
     fetchRoutes();
-    startTracking();
+    const cleanup = startTracking();
+
+    // Request permission for device orientation (required for iOS)
+    const requestOrientationPermission = async () => {
+      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        try {
+          const permissionState = await DeviceOrientationEvent.requestPermission();
+          if (permissionState === 'granted') {
+            window.addEventListener('deviceorientation', handleDeviceOrientation);
+          }
+        } catch (error) {
+          console.error('Error requesting device orientation permission:', error);
+        }
+      } else {
+        // Non iOS devices
+        window.addEventListener('deviceorientation', handleDeviceOrientation);
+      }
+    };
+
+    requestOrientationPermission();
+
+    return () => {
+      if (cleanup) cleanup();
+      window.removeEventListener('deviceorientation', handleDeviceOrientation);
+    };
   }, []);
 
   const fetchRoutes = async () => {
@@ -55,11 +93,11 @@ const SafeRouteNavigator = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          "start_x": -87.7154,
-          "start_y": 41.8881,
-          "end_x": -87.6298,
+          "start_x": -87.6768,
+          "start_y": 41.9088,
+          "end_x": -87.6297,
           "end_y": 41.8781
-        }),
+        })
       });
       const data = await response.json();
       const allRoutes = data.routes.map(route => 
@@ -70,13 +108,9 @@ const SafeRouteNavigator = () => {
       );
       setRoutes(allRoutes);
       
-      // Set start and end points
       if (allRoutes.length > 0) {
-        console.log(allRoutes)
         setStartPoint(allRoutes[0][0]);
         setEndPoint(allRoutes[0][allRoutes[0].length - 1]);
-        console.log('Start Point:', allRoutes[0][0]);
-        console.log('End Point:', allRoutes[0][allRoutes[0].length - 1]);
       }
     } catch (error) {
       console.error('Error fetching routes:', error);
@@ -104,6 +138,13 @@ const SafeRouteNavigator = () => {
       );
 
       return () => navigator.geolocation.clearWatch(watchId);
+    }
+  };
+
+  const handleCenterMap = () => {
+    if (mapRef && userPosition) {
+      mapRef.panTo(userPosition);
+      mapRef.setZoom(15);
     }
   };
 
@@ -141,12 +182,14 @@ const SafeRouteNavigator = () => {
           <Marker
             position={userPosition}
             icon={{
-              path: window.google.maps.SymbolPath.CIRCLE,
-              scale: 7,
-              fillColor: "#4285F4",
+              path: NAVIGATION_ARROW,
+              fillColor: '#4285F4',
               fillOpacity: 1,
-              strokeWeight: 2,
-              strokeColor: "#FFFFFF",
+              strokeWeight: 1,
+              strokeColor: '#FFFFFF',
+              scale: 2,
+              rotation: deviceOrientation,
+              anchor: new window.google.maps.Point(12, 7)
             }}
           />
         )}
@@ -222,11 +265,34 @@ const SafeRouteNavigator = () => {
         </div>
       </div>
 
-
       {/* Map Type Control */}
       <div className="absolute top-4 right-4 bg-white rounded-lg shadow-lg">
         <button className="px-4 py-2 text-sm font-medium flex items-center">
           Map <ChevronDown className="ml-2 h-4 w-4" />
+        </button>
+      </div>
+
+      {/* Reset Button */}
+      <div className="absolute bottom-20 right-4">
+        <button
+          onClick={handleCenterMap}
+          className="bg-white p-3 rounded-full shadow-lg hover:bg-gray-100"
+          title="Center Map"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className="h-6 w-6"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M15 10l-4 4m0 0l-4-4m4 4V3"
+            />
+          </svg>
         </button>
       </div>
 
@@ -249,4 +315,3 @@ const SafeRouteNavigator = () => {
 }
 
 export default SafeRouteNavigator;
-
