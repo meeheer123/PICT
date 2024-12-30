@@ -1,29 +1,25 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { GoogleMap, useJsApiLoader, Polyline, Marker, Circle } from '@react-google-maps/api';
-import { MapPin, Flag, Compass, Navigation, NavigationOff } from 'lucide-react'
+import { MapPin, Flag, Compass } from 'lucide-react';
 
 const mapContainerStyle = {
   width: '100vw',
   height: '100vh'
 };
 
-const center = {
-  lat: 41.8781,
-  lng: -87.6298
-};
-
 const routeColors = ["#FF0000", "#00FF00", "#0000FF", "#FFFF00"];
-// Adjusted arrow path to fix rotation and positioning issues
-// Center point at (0,0), arrow pointing straight up
 const NAVIGATION_ARROW = "M0 10L-5 -10L0 -7L5 -10L0 10Z";
 
 const SafeRouteNavigator = () => {
+  const [center, setCenter] = useState({
+    lat: 41.8781,
+    lng: -87.6298
+  });
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
     googleMapsApiKey: "AIzaSyAnAszR8yWJ-xrdN61WpGU4ki08WXygS64"
   });
 
-  const [map, setMap] = useState(null);
   const [mapRef, setMapRef] = useState(null);
   const [routes, setRoutes] = useState([]);
   const [userPosition, setUserPosition] = useState(null);
@@ -31,27 +27,13 @@ const SafeRouteNavigator = () => {
   const [visibleRoutes, setVisibleRoutes] = useState([true, true, true, true]);
   const [startPoint, setStartPoint] = useState(null);
   const [endPoint, setEndPoint] = useState(null);
-  const [followOrientation, setFollowOrientation] = useState(false);
   const [accuracy, setAccuracy] = useState(null);
-
-  const handleMapRotation = useCallback(() => {
-    if (mapRef && followOrientation) {
-      mapRef.setHeading(deviceOrientation);
-    }
-  }, [mapRef, deviceOrientation, followOrientation]);
 
   const handleDeviceOrientation = (event) => {
     if (event.webkitCompassHeading) {
       setDeviceOrientation(event.webkitCompassHeading);
     } else if (event.alpha) {
-      let heading = 360 - event.alpha;
-      
-      if (event.absolute && window.screen.orientation) {
-        const screenOrientation = window.screen.orientation.angle;
-        heading = (heading + screenOrientation) % 360;
-      }
-      
-      setDeviceOrientation(heading);
+      setDeviceOrientation(360 - event.alpha);
     }
   };
 
@@ -60,9 +42,6 @@ const SafeRouteNavigator = () => {
       zoomControl: true,
       mapTypeControl: false,
       streetViewControl: true,
-      streetViewControlOptions: {
-        position: window.google.maps.ControlPosition.RIGHT_CENTER
-      },
       fullscreenControl: false,
       rotateControl: false,
       gestureHandling: 'greedy',
@@ -70,39 +49,13 @@ const SafeRouteNavigator = () => {
       minZoom: 3
     };
     map.setOptions(mapOptions);
-    setMap(map);
     setMapRef(map);
   }, []);
-
-  const onUnmount = useCallback(() => {
-    setMap(null);
-    setMapRef(null);
-  }, []);
-
-  useEffect(() => {
-    handleMapRotation();
-  }, [deviceOrientation, followOrientation, handleMapRotation]);
 
   useEffect(() => {
     fetchRoutes();
     const cleanup = startTracking();
-
-    const requestOrientationPermission = async () => {
-      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-        try {
-          const permissionState = await DeviceOrientationEvent.requestPermission();
-          if (permissionState === 'granted') {
-            window.addEventListener('deviceorientation', handleDeviceOrientation, true);
-          }
-        } catch (error) {
-          console.error('Error requesting device orientation permission:', error);
-        }
-      } else {
-        window.addEventListener('deviceorientation', handleDeviceOrientation, true);
-      }
-    };
-
-    requestOrientationPermission();
+    window.addEventListener('deviceorientation', handleDeviceOrientation, true);
 
     return () => {
       if (cleanup) cleanup();
@@ -112,7 +65,7 @@ const SafeRouteNavigator = () => {
 
   const fetchRoutes = async () => {
     try {
-      const response = await fetch('http://localhost:8080/route', {
+      const response = await fetch('https://wwqgb2tx-8080.inc1.devtunnels.ms/route', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -151,9 +104,10 @@ const SafeRouteNavigator = () => {
             lng: position.coords.longitude
           };
           setUserPosition(newPosition);
+          setCenter(newPosition);
           setAccuracy(position.coords.accuracy);
           
-          if (followOrientation && position.coords.accuracy <= 20) {
+          if (position.coords.accuracy <= 20) {
             mapRef?.panTo(newPosition);
           }
         },
@@ -175,36 +129,17 @@ const SafeRouteNavigator = () => {
     if (mapRef && userPosition) {
       mapRef.panTo(userPosition);
       mapRef.setZoom(18);
-      if (!followOrientation) {
-        mapRef.setHeading(0);
-      }
     }
-  };
-
-  const toggleOrientationFollow = () => {
-    setFollowOrientation(prev => {
-      if (!prev) {
-        handleMapRotation();
-      } else {
-        mapRef?.setHeading(0);
-      }
-      return !prev;
-    });
   };
 
   const toggleRoute = (index) => {
     setVisibleRoutes(prev => {
-      // Count how many routes are currently visible
       const visibleCount = prev.filter(route => route).length;
-      
-      // If trying to uncheck and this is the last visible route, prevent the action
       if (!prev[index] || visibleCount > 1) {
         const newVisibleRoutes = [...prev];
         newVisibleRoutes[index] = !newVisibleRoutes[index];
         return newVisibleRoutes;
       }
-      
-      // Return the previous state unchanged if trying to uncheck the last visible route
       return prev;
     });
   };
@@ -216,22 +151,15 @@ const SafeRouteNavigator = () => {
         center={center}
         zoom={12}
         onLoad={onLoad}
-        onUnmount={onUnmount}
         options={{
           zoomControl: true,
-          zoomControlOptions: {
-            position: window.google.maps.ControlPosition.RIGHT_CENTER
-          },
-          streetViewControl: true,
-          streetViewControlOptions: {
-            position: window.google.maps.ControlPosition.RIGHT_CENTER
-          }
+          streetViewControl: true
         }}
       >
         {routes.map((route, index) => (
           visibleRoutes[index] && (
             <Polyline
-              key={`route-${index}-${visibleRoutes[index]}`}
+              key={`route-${index}`}
               path={route}
               options={{
                 strokeColor: routeColors[index],
@@ -241,7 +169,7 @@ const SafeRouteNavigator = () => {
             />
           )
         ))}
-
+ 
         {userPosition && (
           <>
             <Circle
@@ -265,12 +193,12 @@ const SafeRouteNavigator = () => {
                 strokeColor: '#FFFFFF',
                 scale: 1.5,
                 rotation: deviceOrientation,
-                anchor: new window.google.maps.Point(0, 0)  // Center anchor point
+                anchor: new window.google.maps.Point(0, 0)
               }}
             />
           </>
         )}
-
+ 
         {startPoint && (
           <Marker
             position={startPoint}
@@ -289,7 +217,7 @@ const SafeRouteNavigator = () => {
             }}
           />
         )}
-
+ 
         {endPoint && (
           <Marker
             position={endPoint}
@@ -309,8 +237,7 @@ const SafeRouteNavigator = () => {
           />
         )}
       </GoogleMap>
-
-      {/* Route Selection Panel */}
+ 
       <div className="absolute top-4 left-4 bg-white rounded-lg shadow-lg p-4 min-w-[240px]">
         <h2 className="text-xl font-bold mb-4">Route Selection</h2>
         <div className="space-y-4">
@@ -329,13 +256,12 @@ const SafeRouteNavigator = () => {
                     className="sr-only peer"
                     disabled={isLastVisible}
                   />
-                  <div className={`w-14 h-8 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 
-                                peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full 
-                                peer dark:bg-gray-700 peer-checked:after:translate-x-full 
-                                peer-checked:bg-black after:content-[''] after:absolute 
-                                after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 
-                                after:border after:rounded-full after:h-7 after:w-7 after:transition-all 
-                                dark:border-gray-600 ${isLastVisible ? 'opacity-50' : ''}`}>
+                  <div className="w-14 h-8 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 
+                                peer-focus:ring-blue-300 rounded-full peer dark:bg-gray-700 
+                                peer-checked:after:translate-x-full peer-checked:bg-black 
+                                after:content-[''] after:absolute after:top-[2px] after:left-[2px] 
+                                after:bg-white after:border-gray-300 after:border after:rounded-full 
+                                after:h-7 after:w-7 after:transition-all">
                   </div>
                   <span className={`ml-4 text-base font-medium ${isLastVisible ? 'opacity-50' : ''}`}>
                     {descriptions[index]}
@@ -350,24 +276,8 @@ const SafeRouteNavigator = () => {
           })}
         </div>
       </div>
-
-      {/* Navigation Controls */}
-      <div className="absolute bottom-20 right-4 space-y-2">
-        <button
-          onClick={toggleOrientationFollow}
-          className={`bg-white p-3 rounded-full shadow-lg hover:bg-gray-100 ${
-            followOrientation ? 'bg-blue-500 text-white hover:bg-blue-600' : ''
-          }`}
-          aria-label={followOrientation ? "Stop following compass direction" : "Follow compass direction"}
-          title={followOrientation ? "Stop following compass direction" : "Follow compass direction"}
-        >
-          {followOrientation ? (
-            <NavigationOff className="h-6 w-6" />
-          ) : (
-            <Navigation className="h-6 w-6" />
-          )}
-        </button>
-        
+ 
+      <div className="absolute bottom-20 right-4">
         <button
           onClick={handleCenterMap}
           className="bg-white p-3 rounded-full shadow-lg hover:bg-gray-100"
@@ -377,8 +287,7 @@ const SafeRouteNavigator = () => {
           <Compass className="h-6 w-6" />
         </button>
       </div>
-
-      {/* Legend */}
+ 
       <div className="absolute bottom-4 left-4 bg-white rounded-lg shadow-lg p-4">
         <h3 className="text-lg font-semibold mb-2">Legend</h3>
         <div className="space-y-2">
