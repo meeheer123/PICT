@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { GoogleMap, useJsApiLoader, Polyline, Marker, Circle } from '@react-google-maps/api';
-import { ChevronDown, MapPin, Flag } from 'lucide-react';
+import { MapPin, Flag, Compass, Navigation, NavigationOff } from 'lucide-react'
 
 const mapContainerStyle = {
   width: '100vw',
@@ -334,21 +334,11 @@ const SafeRouteNavigator = () => {
           aria-label={followOrientation ? "Stop following compass direction" : "Follow compass direction"}
           title={followOrientation ? "Stop following compass direction" : "Follow compass direction"}
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-6 w-6"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            aria-hidden="true"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21l-7-7 7-7"
-            />
-          </svg>
+          {followOrientation ? (
+            <NavigationOff className="h-6 w-6" /> // Shows when compass following is active
+          ) : (
+            <Navigation className="h-6 w-6" /> // Shows when compass following is inactive
+          )}
         </button>
         
         <button
@@ -357,21 +347,7 @@ const SafeRouteNavigator = () => {
           aria-label="Center map on current location"
           title="Center map on current location"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-6 w-6"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            aria-hidden="true"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M15 10l-4 4m0 0l-4-4m4 4V3"
-            />
-          </svg>
+          <Compass className="h-6 w-6" />
         </button>
       </div>
 
