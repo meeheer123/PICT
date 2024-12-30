@@ -57,7 +57,7 @@ const SafeRouteNavigator = () => {
     const mapOptions = {
       zoomControl: true,
       mapTypeControl: false,
-      streetViewControl: true, // Enable Street View control
+      streetViewControl: true,
       streetViewControlOptions: {
         position: window.google.maps.ControlPosition.RIGHT_CENTER
       },
@@ -192,32 +192,40 @@ const SafeRouteNavigator = () => {
 
   const toggleRoute = (index) => {
     setVisibleRoutes(prev => {
-      const newVisibleRoutes = [...prev];
-      newVisibleRoutes[index] = !newVisibleRoutes[index];
-      return newVisibleRoutes;
+      // Count how many routes are currently visible
+      const visibleCount = prev.filter(route => route).length;
+      
+      // If trying to uncheck and this is the last visible route, prevent the action
+      if (!prev[index] || visibleCount > 1) {
+        const newVisibleRoutes = [...prev];
+        newVisibleRoutes[index] = !newVisibleRoutes[index];
+        return newVisibleRoutes;
+      }
+      
+      // Return the previous state unchanged if trying to uncheck the last visible route
+      return prev;
     });
   };
 
   return isLoaded ? (
     <div className="relative w-full h-screen">
       <GoogleMap
-          mapContainerStyle={mapContainerStyle}
-          center={center}
-          zoom={12}
-          onLoad={onLoad}
-          onUnmount={onUnmount}
-          options={{
-            zoomControl: true,
-            zoomControlOptions: {
-              position: window.google.maps.ControlPosition.RIGHT_CENTER
-            },
-            streetViewControl: true, // Enable Street View control
-            streetViewControlOptions: {
-              position: window.google.maps.ControlPosition.RIGHT_CENTER // Position it below zoom control
-            }
-          }}
+        mapContainerStyle={mapContainerStyle}
+        center={center}
+        zoom={12}
+        onLoad={onLoad}
+        onUnmount={onUnmount}
+        options={{
+          zoomControl: true,
+          zoomControlOptions: {
+            position: window.google.maps.ControlPosition.RIGHT_CENTER
+          },
+          streetViewControl: true,
+          streetViewControlOptions: {
+            position: window.google.maps.ControlPosition.RIGHT_CENTER
+          }
+        }}
       >
-        {/* Rest of the component remains the same */}
         {routes.map((route, index) => (
           visibleRoutes[index] && (
             <Polyline
@@ -306,24 +314,30 @@ const SafeRouteNavigator = () => {
         <div className="space-y-4">
           {routeColors.map((color, index) => {
             const descriptions = ["Highest Risk", "High Risk", "Medium Risk", "Lowest Risk"];
+            const visibleCount = visibleRoutes.filter(route => route).length;
+            const isLastVisible = visibleCount === 1 && visibleRoutes[index];
+            
             return (
               <div key={index} className="flex items-center justify-between">
-                <label className="relative inline-flex items-center cursor-pointer">
+                <label className={`relative inline-flex items-center ${isLastVisible ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                   <input
                     type="checkbox"
                     checked={visibleRoutes[index]}
                     onChange={() => toggleRoute(index)}
                     className="sr-only peer"
+                    disabled={isLastVisible}
                   />
-                  <div className="w-14 h-8 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 
+                  <div className={`w-14 h-8 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 
                                 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full 
                                 peer dark:bg-gray-700 peer-checked:after:translate-x-full 
                                 peer-checked:bg-black after:content-[''] after:absolute 
                                 after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 
                                 after:border after:rounded-full after:h-7 after:w-7 after:transition-all 
-                                dark:border-gray-600">
+                                dark:border-gray-600 ${isLastVisible ? 'opacity-50' : ''}`}>
                   </div>
-                  <span className="ml-4 text-base font-medium">{descriptions[index]}</span>
+                  <span className={`ml-4 text-base font-medium ${isLastVisible ? 'opacity-50' : ''}`}>
+                    {descriptions[index]}
+                  </span>
                 </label>
                 <div 
                   className="w-4 h-4 rounded-full"
