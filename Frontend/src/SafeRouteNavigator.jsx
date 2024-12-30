@@ -112,7 +112,7 @@ const SafeRouteNavigator = () => {
 
   const fetchRoutes = async () => {
     try {
-      const response = await fetch('https://wwqgb2tx-8080.inc1.devtunnels.ms/route', {
+      const response = await fetch('http://localhost:8080/route', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
