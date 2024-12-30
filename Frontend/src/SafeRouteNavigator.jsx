@@ -58,14 +58,14 @@ const SafeRouteNavigator = () => {
 
   const onLoad = useCallback((map) => {
     const mapOptions = {
-      zoomControl: false,
+      zoomControl: true, // Enable zoom controls
       mapTypeControl: false,
       streetViewControl: false,
       fullscreenControl: false,
       rotateControl: false,
       gestureHandling: 'greedy',
       maxZoom: 20,
-      minZoom: 10
+      minZoom: 3  // Changed from 10 to 3 to allow much further zoom out
     };
     map.setOptions(mapOptions);
     setMap(map);
@@ -202,11 +202,17 @@ const SafeRouteNavigator = () => {
   return isLoaded ? (
     <div className="relative w-full h-screen">
       <GoogleMap
-        mapContainerStyle={mapContainerStyle}
-        center={center}
-        zoom={18}
-        onLoad={onLoad}
-        onUnmount={onUnmount}
+          mapContainerStyle={mapContainerStyle}
+          center={center}
+          zoom={12}  // Changed from 18 to a more reasonable default zoom
+          onLoad={onLoad}
+          onUnmount={onUnmount}
+          options={{
+            zoomControl: true,  // Enable the default zoom controls
+            zoomControlOptions: {
+              position: window.google.maps.ControlPosition.RIGHT_CENTER
+            }
+          }}
       >
         {routes.map((route, index) => (
           visibleRoutes[index] && (
