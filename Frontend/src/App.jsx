@@ -1,25 +1,21 @@
-import React from "react";
-import SafeRouteNavigator from "./SafeRouteNavigator";
+import React from 'react';
+import SafeRouteNavigator from './SafeRouteNavigator';
 
-const App = () => {
+function App() {
   return (
-    <div className="App flex flex-col min-h-screen">
-      {/* Header Section */}
-      <header className="bg-gray-800 text-white py-4">
-        <h1 className="text-center text-2xl font-bold">Safe Route Navigator</h1>
+    <div className="App flex flex-col h-screen overflow-hidden">
+      <header className="bg-gray-800 text-white flex items-center justify-center h-12">
+        <h1>My App</h1>
       </header>
-
-      {/* Main Section */}
-      <main className="flex-1 relative">
+      <main className="flex-grow relative">
         <SafeRouteNavigator />
       </main>
-
-      {/* Footer Section */}
-      <footer className="bg-gray-800 text-white py-4 text-center">
-        <p className="text-sm">&copy; 2024 SafeRoute. All rights reserved.</p>
+      <footer className="bg-gray-800 text-white text-center h-8">
+        &copy; 2023 My App
       </footer>
     </div>
   );
-};
+}
 
 export default App;
+

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { GoogleMap, useJsApiLoader, Polyline, Marker } from '@react-google-maps/api';
+import { GoogleMap, useJsApiLoader, Polyline, Marker, Circle } from '@react-google-maps/api';
 import { ChevronDown, MapPin, Flag } from 'lucide-react';
 
 const mapContainerStyle = {
@@ -13,7 +13,7 @@ const center = {
 };
 
 const routeColors = ["#FF0000", "#00FF00", "#0000FF", "#FFFF00"];
-const NAVIGATION_ARROW = "M12 2L8 12L12 10L16 12L12 2Z";
+const NAVIGATION_ARROW = "M12 0L7 20L12 17L17 20L12 0Z";
 
 const SafeRouteNavigator = () => {
   const { isLoaded } = useJsApiLoader({
@@ -29,23 +29,43 @@ const SafeRouteNavigator = () => {
   const [visibleRoutes, setVisibleRoutes] = useState([true, true, true, true]);
   const [startPoint, setStartPoint] = useState(null);
   const [endPoint, setEndPoint] = useState(null);
+  const [followOrientation, setFollowOrientation] = useState(false);
+  const [accuracy, setAccuracy] = useState(null);
+
+  const handleMapRotation = useCallback(() => {
+    if (mapRef && followOrientation) {
+      mapRef.setHeading(deviceOrientation);
+    }
+  }, [mapRef, deviceOrientation, followOrientation]);
 
   const handleDeviceOrientation = (event) => {
     if (event.webkitCompassHeading) {
-      // iOS devices
+      // iOS devices - already aligned with true north
       setDeviceOrientation(event.webkitCompassHeading);
     } else if (event.alpha) {
-      // Android devices
-      setDeviceOrientation(360 - event.alpha);
+      // Android devices - convert from arbitrary 0 to true north
+      let heading = 360 - event.alpha;
+      
+      // Incorporate device rotation if available
+      if (event.absolute && window.screen.orientation) {
+        const screenOrientation = window.screen.orientation.angle;
+        heading = (heading + screenOrientation) % 360;
+      }
+      
+      setDeviceOrientation(heading);
     }
   };
 
   const onLoad = useCallback((map) => {
     const mapOptions = {
-      zoomControl: true,
+      zoomControl: false,
       mapTypeControl: false,
-      streetViewControl: true,
-      fullscreenControl: true
+      streetViewControl: false,
+      fullscreenControl: false,
+      rotateControl: false,
+      gestureHandling: 'greedy',
+      maxZoom: 20,
+      minZoom: 10
     };
     map.setOptions(mapOptions);
     setMap(map);
@@ -54,26 +74,29 @@ const SafeRouteNavigator = () => {
 
   const onUnmount = useCallback(() => {
     setMap(null);
+    setMapRef(null);
   }, []);
+
+  useEffect(() => {
+    handleMapRotation();
+  }, [deviceOrientation, followOrientation, handleMapRotation]);
 
   useEffect(() => {
     fetchRoutes();
     const cleanup = startTracking();
 
-    // Request permission for device orientation (required for iOS)
     const requestOrientationPermission = async () => {
       if (typeof DeviceOrientationEvent.requestPermission === 'function') {
         try {
           const permissionState = await DeviceOrientationEvent.requestPermission();
           if (permissionState === 'granted') {
-            window.addEventListener('deviceorientation', handleDeviceOrientation);
+            window.addEventListener('deviceorientation', handleDeviceOrientation, true);
           }
         } catch (error) {
           console.error('Error requesting device orientation permission:', error);
         }
       } else {
-        // Non iOS devices
-        window.addEventListener('deviceorientation', handleDeviceOrientation);
+        window.addEventListener('deviceorientation', handleDeviceOrientation, true);
       }
     };
 
@@ -81,7 +104,7 @@ const SafeRouteNavigator = () => {
 
     return () => {
       if (cleanup) cleanup();
-      window.removeEventListener('deviceorientation', handleDeviceOrientation);
+      window.removeEventListener('deviceorientation', handleDeviceOrientation, true);
     };
   }, []);
 
@@ -126,13 +149,19 @@ const SafeRouteNavigator = () => {
             lng: position.coords.longitude
           };
           setUserPosition(newPosition);
+          setAccuracy(position.coords.accuracy);
+          
+          // Auto-center map if accuracy is good and following is enabled
+          if (followOrientation && position.coords.accuracy <= 20) {
+            mapRef?.panTo(newPosition);
+          }
         },
         (error) => {
           console.error("Error getting user location:", error);
         },
         {
           enableHighAccuracy: true,
-          timeout: 5000,
+          timeout: 1000,
           maximumAge: 0
         }
       );
@@ -144,8 +173,22 @@ const SafeRouteNavigator = () => {
   const handleCenterMap = () => {
     if (mapRef && userPosition) {
       mapRef.panTo(userPosition);
-      mapRef.setZoom(15);
+      mapRef.setZoom(18);
+      if (!followOrientation) {
+        mapRef.setHeading(0);
+      }
     }
+  };
+
+  const toggleOrientationFollow = () => {
+    setFollowOrientation(prev => {
+      if (!prev) {
+        handleMapRotation();
+      } else {
+        mapRef?.setHeading(0);
+      }
+      return !prev;
+    });
   };
 
   const toggleRoute = (index) => {
@@ -161,7 +204,7 @@ const SafeRouteNavigator = () => {
       <GoogleMap
         mapContainerStyle={mapContainerStyle}
         center={center}
-        zoom={10}
+        zoom={18}
         onLoad={onLoad}
         onUnmount={onUnmount}
       >
@@ -178,21 +221,36 @@ const SafeRouteNavigator = () => {
             />
           )
         ))}
+
         {userPosition && (
-          <Marker
-            position={userPosition}
-            icon={{
-              path: NAVIGATION_ARROW,
-              fillColor: '#4285F4',
-              fillOpacity: 1,
-              strokeWeight: 1,
-              strokeColor: '#FFFFFF',
-              scale: 2,
-              rotation: deviceOrientation,
-              anchor: new window.google.maps.Point(12, 7)
-            }}
-          />
+          <>
+            <Circle
+              center={userPosition}
+              radius={accuracy}
+              options={{
+                fillColor: '#4285F4',
+                fillOpacity: 0.2,
+                strokeColor: '#4285F4',
+                strokeOpacity: 0.4,
+                strokeWeight: 1,
+              }}
+            />
+            <Marker
+              position={userPosition}
+              icon={{
+                path: NAVIGATION_ARROW,
+                fillColor: '#4285F4',
+                fillOpacity: 1,
+                strokeWeight: 1,
+                strokeColor: '#FFFFFF',
+                scale: 1.5,
+                rotation: deviceOrientation,
+                anchor: new window.google.maps.Point(12, 20)
+              }}
+            />
+          </>
         )}
+
         {startPoint && (
           <Marker
             position={startPoint}
@@ -211,6 +269,7 @@ const SafeRouteNavigator = () => {
             }}
           />
         )}
+
         {endPoint && (
           <Marker
             position={endPoint}
@@ -236,7 +295,7 @@ const SafeRouteNavigator = () => {
         <h2 className="text-xl font-bold mb-4">Route Selection</h2>
         <div className="space-y-4">
           {routeColors.map((color, index) => {
-            const descriptions = ["Highest Risk ", "High Risk", "Medium Risk", "Lowest Risk"];
+            const descriptions = ["Highest Risk", "High Risk", "Medium Risk", "Lowest Risk"];
             return (
               <div key={index} className="flex items-center justify-between">
                 <label className="relative inline-flex items-center cursor-pointer">
@@ -247,11 +306,11 @@ const SafeRouteNavigator = () => {
                     className="sr-only peer"
                   />
                   <div className="w-14 h-8 bg-gray-200 rounded-full peer 
-                                  peer-checked:bg-black peer-focus:ring-2 
-                                  peer-focus:ring-gray-300">
+                                peer-checked:bg-black peer-focus:ring-2 
+                                peer-focus:ring-gray-300">
                     <div className="absolute left-[4px] top-[4px] bg-white w-6 h-6 
-                                    rounded-full transition-all duration-300 transform 
-                                    peer-checked:translate-x-6"></div>
+                                  rounded-full transition-all duration-300 transform 
+                                  peer-checked:translate-x-6"></div>
                   </div>
                   <span className="ml-4 text-base font-medium">{descriptions[index]}</span>
                 </label>
@@ -265,19 +324,15 @@ const SafeRouteNavigator = () => {
         </div>
       </div>
 
-      {/* Map Type Control */}
-      <div className="absolute top-4 right-4 bg-white rounded-lg shadow-lg">
-        <button className="px-4 py-2 text-sm font-medium flex items-center">
-          Map <ChevronDown className="ml-2 h-4 w-4" />
-        </button>
-      </div>
-
-      {/* Reset Button */}
-      <div className="absolute bottom-20 right-4">
+      {/* Navigation Controls */}
+      <div className="absolute bottom-20 right-4 space-y-2">
         <button
-          onClick={handleCenterMap}
-          className="bg-white p-3 rounded-full shadow-lg hover:bg-gray-100"
-          title="Center Map"
+          onClick={toggleOrientationFollow}
+          className={`bg-white p-3 rounded-full shadow-lg hover:bg-gray-100 ${
+            followOrientation ? 'bg-blue-500 text-white hover:bg-blue-600' : ''
+          }`}
+          aria-label={followOrientation ? "Stop following compass direction" : "Follow compass direction"}
+          title={followOrientation ? "Stop following compass direction" : "Follow compass direction"}
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -285,6 +340,30 @@ const SafeRouteNavigator = () => {
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
+            aria-hidden="true"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21l-7-7 7-7"
+            />
+          </svg>
+        </button>
+        
+        <button
+          onClick={handleCenterMap}
+          className="bg-white p-3 rounded-full shadow-lg hover:bg-gray-100"
+          aria-label="Center map on current location"
+          title="Center map on current location"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className="h-6 w-6"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            aria-hidden="true"
           >
             <path
               strokeLinecap="round"
@@ -308,10 +387,16 @@ const SafeRouteNavigator = () => {
             <Flag className="text-red-500 mr-2" />
             <span>End Point</span>
           </div>
+          {accuracy && (
+            <div className="flex items-center">
+              <div className="w-4 h-4 rounded-full bg-blue-400 opacity-20 mr-2" />
+              <span>GPS Accuracy: {Math.round(accuracy)}m</span>
+            </div>
+          )}
         </div>
       </div>
     </div>
   ) : <div>Loading...</div>;
-}
+};
 
 export default SafeRouteNavigator;
