@@ -40,13 +40,10 @@ const SafeRouteNavigator = () => {
 
   const handleDeviceOrientation = (event) => {
     if (event.webkitCompassHeading) {
-      // iOS devices - already aligned with true north
       setDeviceOrientation(event.webkitCompassHeading);
     } else if (event.alpha) {
-      // Android devices - convert from arbitrary 0 to true north
       let heading = 360 - event.alpha;
       
-      // Incorporate device rotation if available
       if (event.absolute && window.screen.orientation) {
         const screenOrientation = window.screen.orientation.angle;
         heading = (heading + screenOrientation) % 360;
@@ -58,14 +55,17 @@ const SafeRouteNavigator = () => {
 
   const onLoad = useCallback((map) => {
     const mapOptions = {
-      zoomControl: true, // Enable zoom controls
+      zoomControl: true,
       mapTypeControl: false,
-      streetViewControl: false,
+      streetViewControl: true, // Enable Street View control
+      streetViewControlOptions: {
+        position: window.google.maps.ControlPosition.RIGHT_CENTER
+      },
       fullscreenControl: false,
       rotateControl: false,
       gestureHandling: 'greedy',
       maxZoom: 20,
-      minZoom: 3  // Changed from 10 to 3 to allow much further zoom out
+      minZoom: 3
     };
     map.setOptions(mapOptions);
     setMap(map);
@@ -151,7 +151,6 @@ const SafeRouteNavigator = () => {
           setUserPosition(newPosition);
           setAccuracy(position.coords.accuracy);
           
-          // Auto-center map if accuracy is good and following is enabled
           if (followOrientation && position.coords.accuracy <= 20) {
             mapRef?.panTo(newPosition);
           }
@@ -204,16 +203,21 @@ const SafeRouteNavigator = () => {
       <GoogleMap
           mapContainerStyle={mapContainerStyle}
           center={center}
-          zoom={12}  // Changed from 18 to a more reasonable default zoom
+          zoom={12}
           onLoad={onLoad}
           onUnmount={onUnmount}
           options={{
-            zoomControl: true,  // Enable the default zoom controls
+            zoomControl: true,
             zoomControlOptions: {
               position: window.google.maps.ControlPosition.RIGHT_CENTER
+            },
+            streetViewControl: true, // Enable Street View control
+            streetViewControlOptions: {
+              position: window.google.maps.ControlPosition.RIGHT_CENTER // Position it below zoom control
             }
           }}
       >
+        {/* Rest of the component remains the same */}
         {routes.map((route, index) => (
           visibleRoutes[index] && (
             <Polyline
@@ -311,12 +315,13 @@ const SafeRouteNavigator = () => {
                     onChange={() => toggleRoute(index)}
                     className="sr-only peer"
                   />
-                  <div className="w-14 h-8 bg-gray-200 rounded-full peer 
-                                peer-checked:bg-black peer-focus:ring-2 
-                                peer-focus:ring-gray-300">
-                    <div className="absolute left-[4px] top-[4px] bg-white w-6 h-6 
-                                  rounded-full transition-all duration-300 transform 
-                                  peer-checked:translate-x-6"></div>
+                  <div className="w-14 h-8 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 
+                                peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full 
+                                peer dark:bg-gray-700 peer-checked:after:translate-x-full 
+                                peer-checked:bg-black after:content-[''] after:absolute 
+                                after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 
+                                after:border after:rounded-full after:h-7 after:w-7 after:transition-all 
+                                dark:border-gray-600">
                   </div>
                   <span className="ml-4 text-base font-medium">{descriptions[index]}</span>
                 </label>
@@ -341,9 +346,9 @@ const SafeRouteNavigator = () => {
           title={followOrientation ? "Stop following compass direction" : "Follow compass direction"}
         >
           {followOrientation ? (
-            <NavigationOff className="h-6 w-6" /> // Shows when compass following is active
+            <NavigationOff className="h-6 w-6" />
           ) : (
-            <Navigation className="h-6 w-6" /> // Shows when compass following is inactive
+            <Navigation className="h-6 w-6" />
           )}
         </button>
         
