@@ -132,6 +132,17 @@ const SafeRouteNavigator = () => {
     }
   };
 
+  const handleGoToStart = () => {
+    if (mapRef) {
+      const startLocation = {
+        lat: 41.9088,  // start_y from API request
+        lng: -87.6768  // start_x from API request
+      };
+      mapRef.panTo(startLocation);
+      mapRef.setZoom(18);
+    }
+  };
+
   const toggleRoute = (index) => {
     setVisibleRoutes(prev => {
       const visibleCount = prev.filter(route => route).length;
@@ -278,6 +289,14 @@ const SafeRouteNavigator = () => {
       </div>
  
       <div className="absolute bottom-20 right-4">
+        <button
+          onClick={handleGoToStart}
+          className="bg-white p-3 rounded-full shadow-lg hover:bg-gray-100"
+          aria-label="Go to start point"
+          title="Go to start point"
+        >
+          <MapPin className="h-6 w-6" />
+        </button>
         <button
           onClick={handleCenterMap}
           className="bg-white p-3 rounded-full shadow-lg hover:bg-gray-100"
