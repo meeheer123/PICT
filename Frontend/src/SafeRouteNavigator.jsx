@@ -7,7 +7,7 @@ const mapContainerStyle = {
   height: '100vh'
 };
 
-const routeColors = ["#FF0000", "#FFA500", "#FFF000", "#00FF00"];
+const routeColors = ["#FFA500", "#FF0000", "#FFF000", "#00FF00"];
 const NAVIGATION_ARROW = "M0 10L-5 -10L0 -7L5 -10L0 10Z";
 
 const SafeRouteNavigator = () => {
