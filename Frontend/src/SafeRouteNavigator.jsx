@@ -12,8 +12,8 @@ const NAVIGATION_ARROW = "M0 10L-5 -10L0 -7L5 -10L0 10Z";
 
 const SafeRouteNavigator = () => {
   const [center, setCenter] = useState({
-    lat: 41.8781,
-    lng: -87.6298
+    lat: 41.9088,
+    lng: -87.6768
   });
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
@@ -104,7 +104,7 @@ const SafeRouteNavigator = () => {
             lng: position.coords.longitude
           };
           setUserPosition(newPosition);
-          setCenter(newPosition);
+          // setCenter(newPosition);
           setAccuracy(position.coords.accuracy);
           
           if (position.coords.accuracy <= 20) {
