@@ -253,7 +253,7 @@ const SafeRouteNavigator = () => {
         <h2 className="text-xl font-bold mb-4">Route Selection</h2>
         <div className="space-y-4">
           {routeColors.map((color, index) => {
-            const descriptions = ["Highest Risk", "High Risk", "Medium Risk", "Lowest Risk"];
+            const descriptions = ["Lowest Distance", "High Risk", "Medium Risk", "Lowest Risk"];
             const visibleCount = visibleRoutes.filter(route => route).length;
             const isLastVisible = visibleCount === 1 && visibleRoutes[index];
             
