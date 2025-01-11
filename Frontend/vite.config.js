@@ -18,7 +18,7 @@ export default defineConfig({
         background_color: '#ffffff',
         icons: [
           {
-            src: 'Frontend/public/location.png',
+            src: './location.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any maskable'
