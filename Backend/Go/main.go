@@ -1,15 +1,31 @@
 package main
 
 import (
-   "container/heap"
-   "encoding/json"
-   "fmt"
-   "log"
-   "math"
-   "net/http"
-   "os"
-   "sync"
+    "container/heap"
+    "encoding/json"
+    "fmt"
+    "context"
+    "log"
+    "math"
+    "net/http"
+    "os"
+    "sync"
+    "time"
 )
+
+// Global router instance
+var globalRouter *RiskAwareRouter
+
+// Initialize function to set up the router once
+func initializeRouter() error {
+    crimeData := &CrimeData{}
+    var err error
+    globalRouter, err = NewRiskAwareRouter("chicago_roads_with_risk.geojson", crimeData)
+    if err != nil {
+        return fmt.Errorf("failed to initialize router: %v", err)
+    }
+    return nil
+}
 
 type Bounds struct {
    MinX, MinY, MaxX, MaxY float64
@@ -355,41 +371,41 @@ func handleRouteRequest(w http.ResponseWriter, r *http.Request) {
         http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
         return
     }
- 
+
+    // Set a timeout for the request
+    ctx := r.Context()
+    var cancelCtx context.CancelFunc
+    ctx, cancelCtx = context.WithTimeout(ctx, 30*time.Second)
+    defer cancelCtx()
+
     var req struct {
         StartX float64 `json:"start_x"`
         StartY float64 `json:"start_y"`
         EndX   float64 `json:"end_x"`
         EndY   float64 `json:"end_y"`
     }
- 
+
     if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
         http.Error(w, err.Error(), http.StatusBadRequest)
         return
     }
- 
-    crimeData := &CrimeData{}
-    router, err := NewRiskAwareRouter("chicago_roads_with_risk.geojson", crimeData)
-    if err != nil {
-        http.Error(w, err.Error(), http.StatusInternalServerError)
-        return
-    } 
- 
+
     start := Point{X: req.StartX, Y: req.StartY}
     end := Point{X: req.EndX, Y: req.EndY}
     alphas := []float64{0.00, 0.25, 0.50, 0.75}
- 
-    routes, err := router.calculateRoutes(start, end, alphas)
+
+    // Use the global router instance
+    routes, err := globalRouter.calculateRoutes(start, end, alphas)
     if err != nil {
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return
     }
- 
+
     center := Point{
         X: (start.X + end.X) / 2,
         Y: (start.Y + end.Y) / 2,
     }
- 
+
     response := struct {
         Routes     []Route `json:"routes"`
         Center     Point   `json:"center"`
@@ -401,22 +417,35 @@ func handleRouteRequest(w http.ResponseWriter, r *http.Request) {
         StartPoint: start,
         EndPoint:   end,
     }
- 
-    w.Header().Set("Content-Type", "application/json")
-    json.NewEncoder(w).Encode(response)
- }
 
- func main() {
-    // Get port from environment variable or use default
+    w.Header().Set("Content-Type", "application/json")
+    if err := json.NewEncoder(w).Encode(response); err != nil {
+        log.Printf("Failed to encode response: %v", err)
+    }
+}
+
+func main() {
+    // Initialize the router once at startup
+    if err := initializeRouter(); err != nil {
+        log.Fatalf("Failed to initialize router: %v", err)
+    }
+
     port := os.Getenv("PORT")
     if port == "" {
         port = "8080"
     }
 
+    // Create a custom server with timeouts
+    server := &http.Server{
+        Addr:         ":" + port,
+        ReadTimeout:  30 * time.Second,
+        WriteTimeout: 30 * time.Second,
+        IdleTimeout:  60 * time.Second,
+    }
+
     // Set up routes with CORS
     http.HandleFunc("/route", enableCors(handleRouteRequest))
 
-    // Start server with dynamic port
     log.Printf("Server starting on port %s", port)
-    log.Fatal(http.ListenAndServe(":"+port, nil))
+    log.Fatal(server.ListenAndServe())
 }
