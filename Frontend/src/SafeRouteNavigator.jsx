@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { GoogleMap, useJsApiLoader, Polyline, Marker, Circle } from '@react-google-maps/api';
-import { MapPin, Flag, Compass } from 'lucide-react';
+import { MapPin, Flag, Compass, WifiOff, Download, X } from 'lucide-react';
 
 const mapContainerStyle = {
   width: '100vw',
@@ -11,32 +11,46 @@ const routeColors = ["#FFA500", "#FF0000", "#FFF000", "#00FF00"];
 const NAVIGATION_ARROW = "M0 10L-5 -10L0 -7L5 -10L0 10Z";
 
 const SafeRouteNavigator = () => {
+  // Core map states
   const [center, setCenter] = useState({
     lat: 41.9088,
     lng: -87.6768
   });
-  const { isLoaded } = useJsApiLoader({
-    id: 'google-map-script',
-    googleMapsApiKey: "AIzaSyAnAszR8yWJ-xrdN61WpGU4ki08WXygS64"
-  });
-
   const [mapRef, setMapRef] = useState(null);
+  
+  // Route states
   const [routes, setRoutes] = useState([]);
-  const [userPosition, setUserPosition] = useState(null);
-  const [deviceOrientation, setDeviceOrientation] = useState(0);
   const [visibleRoutes, setVisibleRoutes] = useState([true, true, true, true]);
   const [startPoint, setStartPoint] = useState(null);
   const [endPoint, setEndPoint] = useState(null);
+  
+  // User location states
+  const [userPosition, setUserPosition] = useState(null);
+  const [deviceOrientation, setDeviceOrientation] = useState(0);
   const [accuracy, setAccuracy] = useState(null);
+  
+  // PWA states
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [showInstallPrompt, setShowInstallPrompt] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleDeviceOrientation = (event) => {
+  // Google Maps loader
+  const { isLoaded } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: "AIzaSyAnAszR8yWJ-xrdN61WpGU4ki08WXygS64  "
+  });
+
+  // Device orientation handler
+  const handleDeviceOrientation = useCallback((event) => {
     if (event.webkitCompassHeading) {
       setDeviceOrientation(event.webkitCompassHeading);
     } else if (event.alpha) {
       setDeviceOrientation(360 - event.alpha);
     }
-  };
+  }, []);
 
+  // Map load handler
   const onLoad = useCallback((map) => {
     const mapOptions = {
       zoomControl: true,
@@ -52,18 +66,39 @@ const SafeRouteNavigator = () => {
     setMapRef(map);
   }, []);
 
+  // Initialize online/offline listeners and PWA install prompt
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('deviceorientation', handleDeviceOrientation, true);
+
+    // Handle PWA install prompt
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setShowInstallPrompt(true);
+    });
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('deviceorientation', handleDeviceOrientation, true);
+    };
+  }, [handleDeviceOrientation]);
+
+  // Initialize location tracking and route fetching
   useEffect(() => {
     fetchRoutes();
     const cleanup = startTracking();
-    window.addEventListener('deviceorientation', handleDeviceOrientation, true);
-
-    return () => {
-      if (cleanup) cleanup();
-      window.removeEventListener('deviceorientation', handleDeviceOrientation, true);
-    };
+    return cleanup;
   }, []);
 
+  // Fetch routes from API
   const fetchRoutes = async () => {
+    setIsLoading(true);
     try {
       const response = await fetch('https://wwqgb2tx-8080.inc1.devtunnels.ms/route', {
         method: 'POST',
@@ -77,6 +112,9 @@ const SafeRouteNavigator = () => {
           "end_y": 41.8781
         })
       });
+      
+      if (!response.ok) throw new Error('Network response was not ok');
+      
       const data = await response.json();
       const allRoutes = data.routes.map(route => 
         route.path.map(point => ({
@@ -92,9 +130,35 @@ const SafeRouteNavigator = () => {
       }
     } catch (error) {
       console.error('Error fetching routes:', error);
+      // Try to get cached routes if offline
+      if (!isOnline) {
+        try {
+          const cache = await caches.open('safe-route-navigator-v1');
+          const cachedResponse = await cache.match('/route');
+          if (cachedResponse) {
+            const data = await cachedResponse.json();
+            const allRoutes = data.routes.map(route => 
+              route.path.map(point => ({
+                lat: point.Y,
+                lng: point.X
+              }))
+            );
+            setRoutes(allRoutes);
+            if (allRoutes.length > 0) {
+              setStartPoint(allRoutes[0][0]);
+              setEndPoint(allRoutes[0][allRoutes[0].length - 1]);
+            }
+          }
+        } catch (cacheError) {
+          console.error('Error fetching cached routes:', cacheError);
+        }
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
+  // Start location tracking
   const startTracking = () => {
     if ("geolocation" in navigator) {
       const watchId = navigator.geolocation.watchPosition(
@@ -104,7 +168,6 @@ const SafeRouteNavigator = () => {
             lng: position.coords.longitude
           };
           setUserPosition(newPosition);
-          // setCenter(newPosition);
           setAccuracy(position.coords.accuracy);
           
           if (position.coords.accuracy <= 20) {
@@ -125,6 +188,7 @@ const SafeRouteNavigator = () => {
     }
   };
 
+  // Map control handlers
   const handleCenterMap = () => {
     if (mapRef && userPosition) {
       mapRef.panTo(userPosition);
@@ -133,16 +197,13 @@ const SafeRouteNavigator = () => {
   };
 
   const handleGoToStart = () => {
-    if (mapRef) {
-      const startLocation = {
-        lat: 41.9088,  // start_y from API request
-        lng: -87.6768  // start_x from API request
-      };
-      mapRef.panTo(startLocation);
+    if (mapRef && startPoint) {
+      mapRef.panTo(startPoint);
       mapRef.setZoom(18);
     }
   };
 
+  // Route visibility toggle
   const toggleRoute = (index) => {
     setVisibleRoutes(prev => {
       const visibleCount = prev.filter(route => route).length;
@@ -155,8 +216,55 @@ const SafeRouteNavigator = () => {
     });
   };
 
-  return isLoaded ? (
+  // PWA install handler
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    
+    if (outcome === 'accepted') {
+      setShowInstallPrompt(false);
+    }
+    setDeferredPrompt(null);
+  };
+
+  if (!isLoaded) return <div className="flex items-center justify-center h-screen">Loading maps...</div>;
+
+  return (
     <div className="relative w-full h-screen">
+      {/* Offline banner */}
+      {!isOnline && (
+        <div className="absolute top-0 left-0 right-0 bg-yellow-500 text-white p-2 text-center z-50 flex items-center justify-center">
+          <WifiOff className="mr-2 h-4 w-4" />
+          <span>You are offline. Some features may be limited.</span>
+        </div>
+      )}
+
+      {/* Install prompt */}
+      {showInstallPrompt && (
+        <div className="absolute top-16 left-4 right-4 bg-white rounded-lg shadow-lg p-4 z-50">
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="text-lg font-semibold">Install Safe Route Navigator</h3>
+            <button 
+              onClick={() => setShowInstallPrompt(false)}
+              className="text-gray-500 hover:text-gray-700"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <p className="mb-4">Install this app on your device for the best experience</p>
+          <button
+            onClick={handleInstallClick}
+            className="flex items-center bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Install App
+          </button>
+        </div>
+      )}
+
+      {/* Main map */}
       <GoogleMap
         mapContainerStyle={mapContainerStyle}
         center={center}
@@ -167,6 +275,7 @@ const SafeRouteNavigator = () => {
           streetViewControl: true
         }}
       >
+        {/* Route polylines */}
         {routes.map((route, index) => (
           visibleRoutes[index] && (
             <Polyline
@@ -180,7 +289,8 @@ const SafeRouteNavigator = () => {
             />
           )
         ))}
- 
+
+        {/* User location marker */}
         {userPosition && (
           <>
             <Circle
@@ -209,7 +319,8 @@ const SafeRouteNavigator = () => {
             />
           </>
         )}
- 
+
+        {/* Start marker */}
         {startPoint && (
           <Marker
             position={startPoint}
@@ -228,7 +339,8 @@ const SafeRouteNavigator = () => {
             }}
           />
         )}
- 
+
+        {/* End marker */}
         {endPoint && (
           <Marker
             position={endPoint}
@@ -248,7 +360,8 @@ const SafeRouteNavigator = () => {
           />
         )}
       </GoogleMap>
- 
+
+      {/* Route selection panel */}
       <div className="absolute top-4 left-4 bg-white rounded-lg shadow-lg p-4 min-w-[240px]">
         <h2 className="text-xl font-bold mb-4">Route Selection</h2>
         <div className="space-y-4">
@@ -287,11 +400,12 @@ const SafeRouteNavigator = () => {
           })}
         </div>
       </div>
- 
-      <div className="absolute bottom-20 right-4">
+
+      {/* Navigation controls */}
+      <div className="absolute bottom-20 right-4 space-y-2">
         <button
           onClick={handleGoToStart}
-          className="bg-white p-3 rounded-full shadow-lg hover:bg-gray-100"
+          className="bg-white p-3 rounded-full shadow-lg hover:bg-gray-100 block"
           aria-label="Go to start point"
           title="Go to start point"
         >
@@ -299,24 +413,29 @@ const SafeRouteNavigator = () => {
         </button>
         <button
           onClick={handleCenterMap}
-          className="bg-white p-3 rounded-full shadow-lg hover:bg-gray-100"
+          className="bg-white p-3 rounded-full shadow-lg hover:bg-gray-100 block"
           aria-label="Center map on current location"
           title="Center map on current location"
         >
           <Compass className="h-6 w-6" />
         </button>
       </div>
- 
-      <div className="absolute bottom-4 left-4 bg-white rounded-lg shadow-lg p-4">
+
+{/* Legend (continued) */}
+<div className="absolute bottom-4 left-4 bg-white rounded-lg shadow-lg p-4">
         <h3 className="text-lg font-semibold mb-2">Legend</h3>
         <div className="space-y-2">
           <div className="flex items-center">
-            <MapPin className="text-green-500 mr-2" />
+            <div className="w-4 h-4 rounded-full bg-green-500 mr-2" />
             <span>Start Point</span>
           </div>
           <div className="flex items-center">
-            <Flag className="text-red-500 mr-2" />
+            <div className="w-4 h-4 rounded-full bg-red-500 mr-2" />
             <span>End Point</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-4 h-4 rounded-full bg-blue-400 mr-2" />
+            <span>Current Location</span>
           </div>
           {accuracy && (
             <div className="flex items-center">
@@ -324,10 +443,25 @@ const SafeRouteNavigator = () => {
               <span>GPS Accuracy: {Math.round(accuracy)}m</span>
             </div>
           )}
+          <div className="pt-2 border-t border-gray-200">
+            <div className="text-sm font-medium mb-1">Route Types:</div>
+            {routeColors.map((color, index) => {
+              const descriptions = ["Lowest Distance", "High Risk", "Medium Risk", "Lowest Risk"];
+              return (
+                <div key={index} className="flex items-center mt-1">
+                  <div 
+                    className="w-4 h-4 mr-2"
+                    style={{ backgroundColor: color }}
+                  />
+                  <span className="text-sm">{descriptions[index]}</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>
-  ) : <div>Loading...</div>;
+  );
 };
 
 export default SafeRouteNavigator;
