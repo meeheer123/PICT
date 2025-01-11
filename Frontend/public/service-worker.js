@@ -5,15 +5,8 @@ const BUFFER_SIZE = 5;
 const ZOOM_LEVELS = [12, 13, 14, 15, 16, 17, 18];
 
 const urlsToCache = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/icon-192x192.png',
-  '/icon-512x512.png',
-  '/favicon.ico',
-  '/apple-touch-icon.png',
-  '/masked-icon.svg',
-  '/assets/*'  // Cache all assets
+'/',
+  '/index.html'
 ];
 
 // Enhanced helper function to cache map tiles
@@ -95,7 +88,16 @@ async function cacheApiResponse(request, response) {
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(urlsToCache))
+      .then(cache => {
+        // Try to cache each file individually and ignore failures
+        return Promise.allSettled(
+          urlsToCache.map(url => 
+            cache.add(url).catch(error => {
+              console.warn(`Failed to cache ${url}:`, error);
+            })
+          )
+        );
+      })
       .then(() => self.skipWaiting())
   );
 });
@@ -225,14 +227,27 @@ self.addEventListener('sync', event => {
 // Push notification handler
 self.addEventListener('push', event => {
   if (event.data) {
-    const data = event.data.json();
-    event.waitUntil(
-      self.registration.showNotification(data.title, {
+    let title = 'Safe Route Navigator';
+    let options = {};
+    
+    try {
+      // Try to parse as JSON
+      const data = event.data.json();
+      title = data.title || title;
+      options = {
         body: data.body,
-        icon: '/icon-192x192.png',
-        badge: '/icon-192x192.png',
         data: data
-      })
+      };
+      console.log(options);
+    } catch (e) {
+      // If not JSON, treat as plain text
+      options = {
+        body: event.data.text()
+      };
+    }
+
+    event.waitUntil(
+      self.registration.showNotification(title, options)
     );
   }
 });

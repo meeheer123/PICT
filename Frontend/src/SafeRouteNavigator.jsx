@@ -100,7 +100,7 @@ const SafeRouteNavigator = () => {
   const fetchRoutes = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('https://wwqgb2tx-8080.inc1.devtunnels.ms/route', {
+      const response = await fetch('https://pict-production.up.railway.app/route', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
