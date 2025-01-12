@@ -5,9 +5,16 @@ const BUFFER_SIZE = 5;
 const ZOOM_LEVELS = [12, 13, 14, 15, 16, 17, 18];
 
 const urlsToCache = [
-'/',
+  '/',
   '/index.html'
 ];
+
+// Helper function to create a cache key for POST requests
+async function createPostCacheKey(request) {
+  const url = new URL(request.url);
+  const body = await request.clone().text();
+  return `${url.pathname}${url.search}_${body}`;
+}
 
 // Enhanced helper function to cache map tiles
 async function cacheMapTiles(center, zoom) {
@@ -24,12 +31,10 @@ async function cacheMapTiles(center, zoom) {
     // Calculate wider area coverage
     for (let x = centerTile.x - BUFFER_SIZE; x <= centerTile.x + BUFFER_SIZE; x++) {
       for (let y = centerTile.y - BUFFER_SIZE; y <= centerTile.y + BUFFER_SIZE; y++) {
-        // Calculate lat/lng for each tile
         const tileLng = x / Math.pow(2, zoomLevel) * 360 - 180;
         const tileY = y / Math.pow(2, zoomLevel);
         const tileLat = Math.atan(Math.sinh(Math.PI * (1 - 2 * tileY))) * 180 / Math.PI;
 
-        // Create larger tile sizes for better quality
         const sizes = ['256x256', '512x512', '1024x1024'];
         
         for (const size of sizes) {
@@ -37,7 +42,6 @@ async function cacheMapTiles(center, zoom) {
           tilesToCache.push(url);
         }
 
-        // Cache different map types
         const mapTypes = ['roadmap', 'satellite', 'terrain'];
         for (const mapType of mapTypes) {
           const url = `https://maps.googleapis.com/maps/api/staticmap?center=${tileLat},${tileLng}&zoom=${zoomLevel}&size=512x512&maptype=${mapType}&key=${MAPS_API_KEY}&signature=${MAP_SIGNATURE}`;
@@ -77,11 +81,37 @@ async function manageCacheSize() {
   }
 }
 
-// Cache API response data
+// Enhanced cache API response function
 async function cacheApiResponse(request, response) {
   const cache = await caches.open(CACHE_NAME);
-  const clonedResponse = response.clone();
-  await cache.put(request, clonedResponse);
+  
+  if (request.method === 'GET') {
+    // For GET requests, cache normally
+    await cache.put(request, response.clone());
+  } else if (request.method === 'POST') {
+    // For POST requests, create a special cache key
+    const cacheKey = await createPostCacheKey(request);
+    const cacheResponse = response.clone();
+    
+    // Store the response with the special key
+    const cacheRequest = new Request(cacheKey, {
+      method: 'GET',
+      headers: request.headers
+    });
+    
+    await cache.put(cacheRequest, cacheResponse);
+  }
+}
+
+// Helper function to retrieve cached POST response
+async function getCachedPostResponse(request) {
+  const cache = await caches.open(CACHE_NAME);
+  const cacheKey = await createPostCacheKey(request);
+  const cacheRequest = new Request(cacheKey, {
+    method: 'GET',
+    headers: request.headers
+  });
+  return await cache.match(cacheRequest);
 }
 
 // Install event handler
@@ -89,7 +119,6 @@ self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
-        // Try to cache each file individually and ignore failures
         return Promise.allSettled(
           urlsToCache.map(url => 
             cache.add(url).catch(error => {
@@ -120,7 +149,7 @@ self.addEventListener('activate', event => {
   );
 });
 
-// Fetch event handler
+// Enhanced fetch event handler
 self.addEventListener('fetch', event => {
   // Handle map tile requests
   if (event.request.url.includes('maps.googleapis.com')) {
@@ -132,12 +161,14 @@ self.addEventListener('fetch', event => {
           }
           return fetch(event.request)
             .then(response => {
-              const clonedResponse = response.clone();
-              caches.open(MAP_CACHE_NAME)
-                .then(cache => {
-                  cache.put(event.request, clonedResponse);
-                  manageCacheSize();
-                });
+              if (response.ok) {
+                const clonedResponse = response.clone();
+                caches.open(MAP_CACHE_NAME)
+                  .then(cache => {
+                    cache.put(event.request, clonedResponse);
+                    manageCacheSize();
+                  });
+              }
               return response;
             })
             .catch(() => {
@@ -154,25 +185,32 @@ self.addEventListener('fetch', event => {
   // Handle API requests
   if (event.request.url.includes('/route')) {
     event.respondWith(
-      fetch(event.request)
+      fetch(event.request.clone())
         .then(response => {
-          cacheApiResponse(event.request, response);
-          return response.clone();
+          if (response.ok) {
+            cacheApiResponse(event.request.clone(), response.clone());
+          }
+          return response;
         })
-        .catch(() => {
-          return caches.match(event.request)
-            .then(cachedResponse => {
-              if (cachedResponse) {
-                return cachedResponse;
-              }
-              return new Response(
-                JSON.stringify({ error: 'Offline and no cached data available' }),
-                { 
-                  status: 503, 
-                  headers: { 'Content-Type': 'application/json' }
-                }
-              );
-            });
+        .catch(async () => {
+          // Try to get cached response based on request method
+          const cachedResponse = event.request.method === 'POST'
+            ? await getCachedPostResponse(event.request)
+            : await caches.match(event.request);
+
+          if (cachedResponse) {
+            return cachedResponse;
+          }
+
+          return new Response(
+            JSON.stringify({ 
+              error: `Cannot perform ${event.request.method} request while offline`
+            }),
+            { 
+              status: 503, 
+              headers: { 'Content-Type': 'application/json' }
+            }
+          );
         })
     );
     return;
@@ -187,7 +225,6 @@ self.addEventListener('fetch', event => {
         }
         return fetch(event.request)
           .then(response => {
-            // Cache successful responses for static assets
             if (response.ok && (
               event.request.url.endsWith('.js') ||
               event.request.url.endsWith('.css') ||
@@ -218,7 +255,6 @@ self.addEventListener('message', event => {
 self.addEventListener('sync', event => {
   if (event.tag === 'syncMapData') {
     event.waitUntil(
-      // Implement background sync logic here
       Promise.resolve()
     );
   }
@@ -231,7 +267,6 @@ self.addEventListener('push', event => {
     let options = {};
     
     try {
-      // Try to parse as JSON
       const data = event.data.json();
       title = data.title || title;
       options = {
@@ -240,7 +275,6 @@ self.addEventListener('push', event => {
       };
       console.log(options);
     } catch (e) {
-      // If not JSON, treat as plain text
       options = {
         body: event.data.text()
       };
