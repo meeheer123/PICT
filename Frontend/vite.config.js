@@ -10,7 +10,7 @@ export default defineConfig({
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
       manifest: {
         name: 'Safe Route Navigator',
-        short_name: 'SafeNav',
+        short_name: 'SafeRoute',
         description: 'Navigation app for finding safe routes',
         theme_color: '#4285F4',
         start_url: '/',
