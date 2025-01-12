@@ -433,31 +433,12 @@ const SafeRouteNavigator = () => {
             <div className="w-4 h-4 rounded-full bg-red-500 mr-2" />
             <span>End Point</span>
           </div>
-          <div className="flex items-center">
-            <div className="w-4 h-4 rounded-full bg-blue-400 mr-2" />
-            <span>Current Location</span>
-          </div>
           {accuracy && (
             <div className="flex items-center">
               <div className="w-4 h-4 rounded-full bg-blue-400 opacity-20 mr-2" />
               <span>GPS Accuracy: {Math.round(accuracy)}m</span>
             </div>
           )}
-          <div className="pt-2 border-t border-gray-200">
-            <div className="text-sm font-medium mb-1">Route Types:</div>
-            {routeColors.map((color, index) => {
-              const descriptions = ["Lowest Distance", "High Risk", "Medium Risk", "Lowest Risk"];
-              return (
-                <div key={index} className="flex items-center mt-1">
-                  <div 
-                    className="w-4 h-4 mr-2"
-                    style={{ backgroundColor: color }}
-                  />
-                  <span className="text-sm">{descriptions[index]}</span>
-                </div>
-              );
-            })}
-          </div>
         </div>
       </div>
     </div>
