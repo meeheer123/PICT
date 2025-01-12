@@ -1,6 +1,6 @@
 {
     "name": "Safe Route Navigator",
-    "short_name": "SafeNav",
+    "short_name": "SafeRoute",
     "description": "Navigation app for finding safe routes",
     "start_url": ".",
     "display": "standalone",
