@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { GoogleMap, useJsApiLoader, Polyline, Marker, Circle } from '@react-google-maps/api';
-import { Map, Eye, EyeOff, Info, Compass, WifiOff, Layers, Battery, Signal, Crosshair, Flag, Menu, Sun, Moon, Share2, Download, AlertTriangle, MapPin, ChevronLeft } from 'lucide-react';
+import { Map, Eye, EyeOff, Info, Compass, WifiOff, Layers, Battery, Signal, Crosshair, Flag, Menu, Sun, Moon, Share2, Download, MapPin, ChevronLeft } from 'lucide-react';
 
 const mapContainerStyle = {
   width: '100%',
@@ -40,12 +40,14 @@ const SafeRouteNavigator = () => {
 
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
-    googleMapsApiKey: 'AIzaSyAnAszR8yWJ-xrdN61WpGU4ki08WXygS64'
+    googleMapsApiKey: 'AIzaSyAnAszR8yWJ-xrdN61WpGU4ki08WXygS64',
+    libraries: ['places']
   });
 
   const watchPositionRef = useRef(null);
+  const watchId = useRef(null);
 
-  const startLocationTracking = useCallback(() => {
+  const startNavigatorGeolocation = useCallback(() => {
     if ("geolocation" in navigator) {
       const options = {
         enableHighAccuracy: true,
@@ -62,16 +64,74 @@ const SafeRouteNavigator = () => {
           setAltitude(altitude);
         },
         (error) => {
-          console.error("Error getting location:", error);
+          console.error("Navigator geolocation error:", error);
         },
         options
       );
     }
   }, []);
 
+  const startLocationTracking = useCallback(() => {
+    if (!isOnline) {
+      startNavigatorGeolocation();
+      return;
+    }
+
+    if (mapRef && window.google) {
+      const locationUpdate = () => {
+        const service = new window.google.maps.places.PlacesService(mapRef);
+        
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+              const { latitude, longitude, accuracy, speed, altitude } = position.coords;
+              const location = new window.google.maps.LatLng(latitude, longitude);
+              
+              service.nearbySearch({
+                location: location,
+                radius: 1
+              }, (results, status) => {
+                if (status === window.google.maps.places.PlacesServiceStatus.OK) {
+                  setUserPosition({ lat: latitude, lng: longitude });
+                  setAccuracy(accuracy);
+                  setSpeed(speed);
+                  setAltitude(altitude);
+                } else {
+                  setUserPosition({ lat: latitude, lng: longitude });
+                  setAccuracy(accuracy);
+                  setSpeed(speed);
+                  setAltitude(altitude);
+                }
+              });
+            },
+            (error) => {
+              console.error("Geolocation error:", error);
+              startNavigatorGeolocation();
+            },
+            {
+              enableHighAccuracy: true,
+              timeout: 5000,
+              maximumAge: 0
+            }
+          );
+        }
+      };
+
+      locationUpdate();
+      watchId.current = setInterval(locationUpdate, 1000);
+    } else {
+      startNavigatorGeolocation();
+    }
+  }, [isOnline, mapRef, startNavigatorGeolocation]);
+
   const stopLocationTracking = useCallback(() => {
     if (watchPositionRef.current) {
       navigator.geolocation.clearWatch(watchPositionRef.current);
+      watchPositionRef.current = null;
+    }
+    if (watchId.current) {
+      clearInterval(watchId.current);
+      watchId.current = null;
     }
   }, []);
 
@@ -369,7 +429,6 @@ const SafeRouteNavigator = () => {
         )}
       </GoogleMap>
 
-      {/* Floating Action Buttons */}
       <div className="absolute bottom-24 right-4 space-y-2">
         <button
           onClick={handleCenterOnUser}
@@ -402,7 +461,7 @@ const SafeRouteNavigator = () => {
                 <ChevronLeft className="h-6 w-6" />
               </button>
               <h2 className="text-xl font-bold text-gray-800 dark:text-gray-200">Menu</h2>
-              <div className="w-8"></div> {/* Spacer for alignment */}
+              <div className="w-8"></div>
             </div>
             <button
               onClick={toggleDarkMode}
@@ -441,7 +500,7 @@ const SafeRouteNavigator = () => {
                 <ChevronLeft className="h-6 w-6" />
               </button>
               <h2 className="text-xl font-bold text-gray-800 dark:text-gray-200">Route Options</h2>
-              <div className="w-8"></div> {/* Spacer for alignment */}
+              <div className="w-8"></div>
             </div>
             {routeColors.map((color, index) => (
               <button
@@ -481,7 +540,7 @@ const SafeRouteNavigator = () => {
                 <ChevronLeft className="h-6 w-6" />
               </button>
               <h2 className="text-xl font-bold text-gray-800 dark:text-gray-200">Status</h2>
-              <div className="w-8"></div> {/* Spacer for alignment */}
+              <div className="w-8"></div>
             </div>
             <div className="space-y-2 text-sm">
               <p className="flex items-center text-gray-600 dark:text-gray-400">
@@ -544,4 +603,3 @@ const SafeRouteNavigator = () => {
 };
 
 export default SafeRouteNavigator;
-
