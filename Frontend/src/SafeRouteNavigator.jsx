@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { GoogleMap, useJsApiLoader, Polyline, Marker, Circle } from '@react-google-maps/api';
-import { Map, Eye, EyeOff, Info, Compass, WifiOff, Layers, Battery, Signal, Crosshair, Flag, Menu, X, Sun, Moon, Share2, Download, AlertTriangle, MapPin, ChevronLeft } from 'lucide-react';
+import { Map, Eye, EyeOff, Info, Compass, WifiOff, Layers, Battery, Signal, Crosshair, Flag, Menu, Sun, Moon, Share2, Download, AlertTriangle, MapPin, ChevronLeft } from 'lucide-react';
 
 const mapContainerStyle = {
   width: '100%',
   height: '100vh'
 };
 
-const routeColors = ["#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0"];
+const routeColors = ["#4BC0C0", "#FF6384", "#FFCE56", "#36A2EB"];
+const routeNames = ["Fastest Route", "High Risk", "Medium Risk", "Safest Route"];
 const NAVIGATION_ARROW = "M0 10L-5 -10L0 -7L5 -10L0 10Z";
 
 const defaultCenter = {
@@ -35,7 +36,6 @@ const SafeRouteNavigator = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [activePanel, setActivePanel] = useState(null);
-  const [showWeatherAlert, setShowWeatherAlert] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
 
   const { isLoaded } = useJsApiLoader({
@@ -230,15 +230,9 @@ const SafeRouteNavigator = () => {
       setDeferredPrompt(e);
     });
 
-    // Simulating weather alert after 10 seconds
-    const weatherAlertTimeout = setTimeout(() => {
-      setShowWeatherAlert(true);
-    }, 10000);
-
     return () => {
       stopLocationTracking();
       window.removeEventListener('deviceorientation', handleDeviceOrientation);
-      clearTimeout(weatherAlertTimeout);
     };
   }, [handleDeviceOrientation, startLocationTracking, stopLocationTracking, fetchRoutes]);
 
@@ -463,7 +457,7 @@ const SafeRouteNavigator = () => {
                     style={{ backgroundColor: color }}
                   />
                   <span className="font-medium text-gray-700 dark:text-gray-300">
-                    Route {index + 1}
+                    {routeNames[index]}
                   </span>
                 </div>
                 {visibleRoutes[index] ? (
@@ -543,22 +537,6 @@ const SafeRouteNavigator = () => {
             <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
             <p className="mt-2 text-gray-700 dark:text-gray-300">Loading routes...</p>
           </div>
-        </div>
-      )}
-
-      {showWeatherAlert && (
-        <div className="absolute bottom-24 left-4 right-4 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 rounded-lg shadow-lg z-50">
-          <div className="flex items-center">
-            <AlertTriangle className="h-6 w-6 mr-2 flex-shrink-0" />
-            <p className="font-bold">Weather Alert: Heavy rain expected in your area.</p>
-          </div>
-          <p className="mt-2">Please take necessary precautions and stay safe.</p>
-          <button
-            onClick={() => setShowWeatherAlert(false)}
-            className="mt-2 bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-1 px-2 rounded text-xs"
-          >
-            Dismiss
-          </button>
         </div>
       )}
     </div>
