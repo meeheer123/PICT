@@ -195,8 +195,8 @@ const SafeRouteNavigator = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          start_x: -74.0060,
-          start_y: 40.7128,
+          start_x: center.lng,
+          start_y: center.lat,
           end_x: -87.6297,
           end_y: 41.8781
         })
