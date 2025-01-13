@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { GoogleMap, useJsApiLoader, Polyline, Marker, Circle } from '@react-google-maps/api';
-import { MapPin, Flag, Compass, WifiOff, Download, X } from 'lucide-react';
+import { MapPin, Flag, Compass, WifiOff, Download, X, Layers, Battery, Signal } from 'lucide-react';
 
+// Constants
 const mapContainerStyle = {
   width: '100vw',
   height: '100vh'
@@ -10,93 +11,361 @@ const mapContainerStyle = {
 const routeColors = ["#FFA500", "#FF0000", "#FFF000", "#00FF00"];
 const NAVIGATION_ARROW = "M0 10L-5 -10L0 -7L5 -10L0 10Z";
 
+const defaultCenter = {
+  lat: 41.9088,
+  lng: -87.6768
+};
+
 const SafeRouteNavigator = () => {
   // Core map states
-  const [center, setCenter] = useState({
-    lat: 41.9088,
-    lng: -87.6768
-  });
+  const [center, setCenter] = useState(defaultCenter);
   const [mapRef, setMapRef] = useState(null);
+  const [zoom, setZoom] = useState(12);
   
   // Route states
   const [routes, setRoutes] = useState([]);
   const [visibleRoutes, setVisibleRoutes] = useState([true, true, true, true]);
   const [startPoint, setStartPoint] = useState(null);
   const [endPoint, setEndPoint] = useState(null);
+  const [activeRoute, setActiveRoute] = useState(null);
   
-  // User location states
+  // Location and sensor states
   const [userPosition, setUserPosition] = useState(null);
   const [deviceOrientation, setDeviceOrientation] = useState(0);
   const [accuracy, setAccuracy] = useState(null);
+  const [isHighAccuracy, setIsHighAccuracy] = useState(false);
+  const [speed, setSpeed] = useState(null);
+  const [altitude, setAltitude] = useState(null);
+  const [heading, setHeading] = useState(null);
   
-  // PWA states
+  // PWA and system states
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [batteryLevel, setBatteryLevel] = useState(null);
+  const [isLowPower, setIsLowPower] = useState(false);
+  const [isBackgroundTracking, setIsBackgroundTracking] = useState(false);
+  const [networkType, setNetworkType] = useState(null);
+  const [lastSync, setLastSync] = useState(null);
+
+  // Refs
+  const locationHistory = useRef([]);
+  const lastGoodPosition = useRef(null);
+  const wakeLockRef = useRef(null);
+  const syncIntervalRef = useRef(null);
+  
+  // Enhanced Kalman filter
+  const kalmanFilter = useRef({
+    position: {
+      Q: 0.001, // process noise
+      R: 0.1,   // measurement noise
+      P: 1,     // estimation error
+      K: 0,     // Kalman gain
+      estimate: null
+    },
+    altitude: {
+      Q: 0.1,
+      R: 1,
+      P: 1,
+      K: 0,
+      estimate: null
+    },
+    heading: {
+      Q: 0.05,
+      R: 0.2,
+      P: 1,
+      K: 0,
+      estimate: null
+    }
+  });
+
+  // Sensor fusion ref
+  const sensorFusion = useRef({
+    accelerometer: null,
+    gyroscope: null,
+    magnetometer: null,
+    lastReadings: {
+      acceleration: { x: 0, y: 0, z: 0 },
+      rotation: { alpha: 0, beta: 0, gamma: 0 },
+      magnetic: { x: 0, y: 0, z: 0 }
+    }
+  });
 
   // Google Maps loader
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
-    googleMapsApiKey: "AIzaSyAnAszR8yWJ-xrdN61WpGU4ki08WXygS64  "
+    googleMapsApiKey: 'AIzaSyAnAszR8yWJ-xrdN61WpGU4ki08WXygS64'
   });
 
-  // Device orientation handler
-  const handleDeviceOrientation = useCallback((event) => {
-    if (event.webkitCompassHeading) {
-      setDeviceOrientation(event.webkitCompassHeading);
-    } else if (event.alpha) {
-      setDeviceOrientation(360 - event.alpha);
+  // Utility Functions
+  const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371e3; // Earth's radius in meters
+    const φ1 = lat1 * Math.PI/180;
+    const φ2 = lat2 * Math.PI/180;
+    const Δφ = (lat2-lat1) * Math.PI/180;
+    const Δλ = (lon2-lon1) * Math.PI/180;
+
+    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+              Math.cos(φ1) * Math.cos(φ2) *
+              Math.sin(Δλ/2) * Math.sin(Δλ/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+    return R * c;
+  };
+
+  const isValidLocation = (position) => {
+    if (!position || !position.coords) return false;
+    
+    if (position.coords.accuracy > 100) return false;
+    if (position.coords.speed && position.coords.speed > 33) return false;
+    
+    if (lastGoodPosition.current) {
+      const distance = calculateDistance(
+        lastGoodPosition.current.coords.latitude,
+        lastGoodPosition.current.coords.longitude,
+        position.coords.latitude,
+        position.coords.longitude
+      );
+      
+      const timeDiff = (position.timestamp - lastGoodPosition.current.timestamp) / 1000;
+      if (timeDiff < 1 && distance > 100) return false;
+      
+      // Check if movement is consistent with sensor data
+      if (sensorFusion.current.accelerometer) {
+        const acceleration = sensorFusion.current.lastReadings.acceleration;
+        const expectedMovement = 0.5 * acceleration.x * timeDiff * timeDiff;
+        if (Math.abs(distance - expectedMovement) > 50) return false;
+      }
     }
-  }, []);
+    
+    return true;
+  };
 
-  // Map load handler
-  const onLoad = useCallback((map) => {
-    const mapOptions = {
-      zoomControl: true,
-      mapTypeControl: false,
-      streetViewControl: true,
-      fullscreenControl: false,
-      rotateControl: false,
-      gestureHandling: 'greedy',
-      maxZoom: 20,
-      minZoom: 3
+  const applyKalmanFilter = (measurement, type = 'position') => {
+    const filter = kalmanFilter.current[type];
+    
+    if (!filter.estimate) {
+      filter.estimate = measurement;
+      return measurement;
+    }
+
+    filter.P = filter.P + filter.Q;
+    filter.K = filter.P / (filter.P + filter.R);
+    filter.estimate = filter.estimate + filter.K * (measurement - filter.estimate);
+    filter.P = (1 - filter.K) * filter.P;
+
+    return filter.estimate;
+  };
+
+  // Permission and Initialization Functions
+  const requestEnhancedPermissions = async () => {
+    try {
+      // Wake Lock
+      if ('wakeLock' in navigator) {
+        wakeLockRef.current = await navigator.wakeLock.request('screen');
+      }
+
+      // Motion and Orientation
+      if (DeviceMotionEvent.requestPermission) {
+        await DeviceMotionEvent.requestPermission();
+      }
+      if (DeviceOrientationEvent.requestPermission) {
+        await DeviceOrientationEvent.requestPermission();
+      }
+
+      // Background Location
+      if ('permissions' in navigator) {
+        const result = await navigator.permissions.query({ name: 'geolocation' });
+        setIsBackgroundTracking(result.state === 'granted');
+      }
+
+      // Sensors
+      if ('Accelerometer' in window) {
+        sensorFusion.current.accelerometer = new Accelerometer({ frequency: 60 });
+        sensorFusion.current.accelerometer.addEventListener('reading', () => {
+          sensorFusion.current.lastReadings.acceleration = {
+            x: sensorFusion.current.accelerometer.x,
+            y: sensorFusion.current.accelerometer.y,
+            z: sensorFusion.current.accelerometer.z
+          };
+        });
+        sensorFusion.current.accelerometer.start();
+      }
+
+      if ('Gyroscope' in window) {
+        sensorFusion.current.gyroscope = new Gyroscope({ frequency: 60 });
+        sensorFusion.current.gyroscope.addEventListener('reading', () => {
+          sensorFusion.current.lastReadings.rotation = {
+            alpha: sensorFusion.current.gyroscope.x,
+            beta: sensorFusion.current.gyroscope.y,
+            gamma: sensorFusion.current.gyroscope.z
+          };
+        });
+        sensorFusion.current.gyroscope.start();
+      }
+
+      if ('Magnetometer' in window) {
+        sensorFusion.current.magnetometer = new Magnetometer({ frequency: 60 });
+        sensorFusion.current.magnetometer.addEventListener('reading', () => {
+          sensorFusion.current.lastReadings.magnetic = {
+            x: sensorFusion.current.magnetometer.x,
+            y: sensorFusion.current.magnetometer.y,
+            z: sensorFusion.current.magnetometer.z
+          };
+        });
+        sensorFusion.current.magnetometer.start();
+      }
+
+    } catch (error) {
+      console.warn('Enhanced permissions not fully available:', error);
+    }
+  };
+
+  const initializeBatteryMonitoring = async () => {
+    if ('getBattery' in navigator) {
+      const battery = await navigator.getBattery();
+      
+      const updateBatteryStatus = () => {
+        setBatteryLevel(battery.level);
+        setIsLowPower(battery.level <= 0.2);
+        
+        // Adjust tracking frequency based on battery level
+        if (battery.level <= 0.1) {
+          // Reduce tracking frequency
+          kalmanFilter.current.position.Q = 0.01;
+          kalmanFilter.current.position.R = 0.5;
+        }
+      };
+      
+      battery.addEventListener('levelchange', updateBatteryStatus);
+      updateBatteryStatus();
+      
+      return () => battery.removeEventListener('levelchange', updateBatteryStatus);
+    }
+  };
+
+  const initializeNetworkMonitoring = () => {
+    if ('connection' in navigator) {
+      const connection = navigator.connection;
+      
+      const updateNetworkStatus = () => {
+        setNetworkType(connection.effectiveType);
+        
+        // Adjust sync frequency based on network type
+        if (connection.effectiveType === '4g') {
+          syncIntervalRef.current = setInterval(syncData, 30000);
+        } else {
+          syncIntervalRef.current = setInterval(syncData, 60000);
+        }
+      };
+      
+      connection.addEventListener('change', updateNetworkStatus);
+      updateNetworkStatus();
+      
+      return () => connection.removeEventListener('change', updateNetworkStatus);
+    }
+  };
+
+  // Location Tracking
+  const startEnhancedTracking = () => {
+    if (!("geolocation" in navigator)) return;
+
+    const options = {
+      enableHighAccuracy: true,
+      timeout: 30000,
+      maximumAge: 0,
+      distanceFilter: 5
     };
-    map.setOptions(mapOptions);
-    setMapRef(map);
-  }, []);
 
-  // Initialize online/offline listeners and PWA install prompt
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        if (!isValidLocation(position)) return;
 
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    window.addEventListener('deviceorientation', handleDeviceOrientation, true);
+        const smoothedPosition = {
+          lat: applyKalmanFilter(position.coords.latitude, 'position'),
+          lng: applyKalmanFilter(position.coords.longitude, 'position'),
+          altitude: position.coords.altitude ? 
+            applyKalmanFilter(position.coords.altitude, 'altitude') : null,
+          heading: position.coords.heading ? 
+            applyKalmanFilter(position.coords.heading, 'heading') : null
+        };
 
-    // Handle PWA install prompt
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-      setShowInstallPrompt(true);
-    });
+        setUserPosition(smoothedPosition);
+        setAccuracy(position.coords.accuracy);
+        setSpeed(position.coords.speed);
+        setAltitude(smoothedPosition.altitude);
+        setHeading(smoothedPosition.heading);
+
+        // Update location history
+        locationHistory.current.push({
+          ...smoothedPosition,
+          timestamp: position.timestamp,
+          accuracy: position.coords.accuracy,
+          speed: position.coords.speed
+        });
+
+        if (locationHistory.current.length > 20) {
+          locationHistory.current.shift();
+        }
+
+        lastGoodPosition.current = position;
+
+        // Auto-pan map if accuracy is good
+        if (position.coords.accuracy <= 20 && mapRef) {
+          mapRef.panTo({ lat: smoothedPosition.lat, lng: smoothedPosition.lng });
+        }
+      },
+      (error) => {
+        console.error("Location error:", error);
+        // Fallback to lower accuracy
+        if (isHighAccuracy) {
+          setIsHighAccuracy(false);
+          startEnhancedTracking();
+        }
+      },
+      options
+    );
 
     return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-      window.removeEventListener('deviceorientation', handleDeviceOrientation, true);
+      navigator.geolocation.clearWatch(watchId);
     };
-  }, [handleDeviceOrientation]);
+  };
 
-  // Initialize location tracking and route fetching
-  useEffect(() => {
-    fetchRoutes();
-    const cleanup = startTracking();
-    return cleanup;
-  }, []);
+  // Data Synchronization
+  const syncData = async () => {
+    if (!isOnline) return;
 
-  // Fetch routes from API
+    try {
+      // Sync location history
+      const locationData = {
+        history: locationHistory.current,
+        currentPosition: userPosition,
+        timestamp: Date.now()
+      };
+
+      const response = await fetch('https://your-api.com/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(locationData)
+      });
+
+      if (response.ok) {
+        setLastSync(new Date());
+        // Cache successful sync
+        if ('caches' in window) {
+          const cache = await caches.open('location-cache');
+          await cache.put('/sync', new Response(JSON.stringify(locationData)));
+        }
+      }
+    } catch (error) {
+      console.error('Sync failed:', error);
+    }
+  };
+
+  // Route Fetching
   const fetchRoutes = async () => {
     setIsLoading(true);
     try {
@@ -106,10 +375,10 @@ const SafeRouteNavigator = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          "start_x": -87.6768,
-          "start_y": 41.9088,
-          "end_x": -87.6297,
-          "end_y": 41.8781
+          start_x: center.lng,
+          start_y: center.lat,
+          end_x: -87.6297,
+          end_y: 41.8781
         })
       });
       
@@ -122,19 +391,26 @@ const SafeRouteNavigator = () => {
           lng: point.X
         }))
       );
+      
       setRoutes(allRoutes);
       
       if (allRoutes.length > 0) {
         setStartPoint(allRoutes[0][0]);
         setEndPoint(allRoutes[0][allRoutes[0].length - 1]);
       }
+
+      // Cache routes for offline use
+      if ('caches' in window) {
+        const cache = await caches.open('routes-cache');
+        await cache.put('/routes', new Response(JSON.stringify(data)));
+      }
     } catch (error) {
       console.error('Error fetching routes:', error);
       // Try to get cached routes if offline
-      if (!isOnline) {
+      if (!isOnline && 'caches' in window) {
         try {
-          const cache = await caches.open('safe-route-navigator-v1');
-          const cachedResponse = await cache.match('/route');
+          const cache = await caches.open('routes-cache');
+          const cachedResponse = await cache.match('/routes');
           if (cachedResponse) {
             const data = await cachedResponse.json();
             const allRoutes = data.routes.map(route => 
@@ -158,53 +434,47 @@ const SafeRouteNavigator = () => {
     }
   };
 
-  // Start location tracking
-  const startTracking = () => {
-    if ("geolocation" in navigator) {
-      const watchId = navigator.geolocation.watchPosition(
-        (position) => {
-          const newPosition = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude
-          };
-          setUserPosition(newPosition);
-          setAccuracy(position.coords.accuracy);
-          
-          if (position.coords.accuracy <= 20) {
-            mapRef?.panTo(newPosition);
-          }
-        },
-        (error) => {
-          console.error("Error getting user location:", error);
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 1000,
-          maximumAge: 0
-        }
-      );
-
-      return () => navigator.geolocation.clearWatch(watchId);
+  // Event Handlers
+  const handleDeviceOrientation = useCallback((event) => {
+    let orientationValue;
+    if (event.webkitCompassHeading) {
+      orientationValue = event.webkitCompassHeading;
+    } else if (event.alpha) {
+      orientationValue = 360 - event.alpha;
     }
-  };
 
-  // Map control handlers
-  const handleCenterMap = () => {
+    if (orientationValue !== null) {
+      // Apply Kalman filtering to smooth orientation changes
+      const smoothedOrientation = applyKalmanFilter(orientationValue, 'heading');
+      setDeviceOrientation(smoothedOrientation);
+    }
+  }, []);
+
+  const handleMapLoad = useCallback((map) => {
+    const mapOptions = {
+      zoomControl: true,
+      mapTypeControl: false,
+      streetViewControl: true,
+      fullscreenControl: false,
+      rotateControl: false,
+      gestureHandling: 'greedy',
+      maxZoom: 20,
+      minZoom: 3,
+      mapId: 'YOUR_MAP_ID', // For custom map styling
+      tilt: 45 // Add 45-degree viewing angle
+    };
+    map.setOptions(mapOptions);
+    setMapRef(map);
+  }, []);
+
+  const handleCenterMap = useCallback(() => {
     if (mapRef && userPosition) {
       mapRef.panTo(userPosition);
       mapRef.setZoom(18);
     }
-  };
+  }, [mapRef, userPosition]);
 
-  const handleGoToStart = () => {
-    if (mapRef && startPoint) {
-      mapRef.panTo(startPoint);
-      mapRef.setZoom(18);
-    }
-  };
-
-  // Route visibility toggle
-  const toggleRoute = (index) => {
+  const handleRouteToggle = useCallback((index) => {
     setVisibleRoutes(prev => {
       const visibleCount = prev.filter(route => route).length;
       if (!prev[index] || visibleCount > 1) {
@@ -214,9 +484,8 @@ const SafeRouteNavigator = () => {
       }
       return prev;
     });
-  };
+  }, []);
 
-  // PWA install handler
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;
     
@@ -229,7 +498,75 @@ const SafeRouteNavigator = () => {
     setDeferredPrompt(null);
   };
 
-  if (!isLoaded) return <div className="flex items-center justify-center h-screen">Loading maps...</div>;
+  // Cleanup function
+  const cleanup = () => {
+    // Clear sensors
+    Object.values(sensorFusion.current).forEach(sensor => {
+      if (sensor && sensor.stop) sensor.stop();
+    });
+
+    // Release wake lock
+    if (wakeLockRef.current) {
+      wakeLockRef.current.release();
+      wakeLockRef.current = null;
+    }
+
+    // Clear sync interval
+    if (syncIntervalRef.current) {
+      clearInterval(syncIntervalRef.current);
+    }
+  };
+
+  // Effects
+  useEffect(() => {
+    const initializeApp = async () => {
+      await requestEnhancedPermissions();
+      await initializeBatteryMonitoring();
+      initializeNetworkMonitoring();
+      const trackingCleanup = startEnhancedTracking();
+      
+      fetchRoutes();
+
+      return () => {
+        trackingCleanup();
+        cleanup();
+      };
+    };
+
+    initializeApp();
+  }, []);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('deviceorientation', handleDeviceOrientation, true);
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setShowInstallPrompt(true);
+    });
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('deviceorientation', handleDeviceOrientation);
+    };
+  }, [handleDeviceOrientation]);
+
+  if (!isLoaded) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-lg">Loading maps...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full h-screen">
@@ -237,45 +574,41 @@ const SafeRouteNavigator = () => {
       {!isOnline && (
         <div className="absolute top-0 left-0 right-0 bg-yellow-500 text-white p-2 text-center z-50 flex items-center justify-center">
           <WifiOff className="mr-2 h-4 w-4" />
-          <span>You are offline. Some features may be limited.</span>
+          <span>Offline mode - Using cached data</span>
         </div>
       )}
 
-      {/* Install prompt */}
-      {showInstallPrompt && (
-        <div className="absolute top-16 left-4 right-4 bg-white rounded-lg shadow-lg p-4 z-50">
-          <div className="flex justify-between items-center mb-2">
-            <h3 className="text-lg font-semibold">Install Safe Route Navigator</h3>
-            <button 
-              onClick={() => setShowInstallPrompt(false)}
-              className="text-gray-500 hover:text-gray-700"
-            >
-              <X className="h-5 w-5" />
-            </button>
+      {/* Status indicators */}
+      <div className="absolute top-4 right-4 space-y-2 z-50">
+        {batteryLevel !== null && (
+          <div className={`bg-white rounded-lg shadow-lg p-2 flex items-center ${
+            isLowPower ? 'text-red-500' : 'text-green-500'
+          }`}>
+            <Battery className="h-4 w-4 mr-2" />
+            <span>{Math.round(batteryLevel * 100)}%</span>
           </div>
-          <p className="mb-4">Install this app on your device for the best experience</p>
-          <button
-            onClick={handleInstallClick}
-            className="flex items-center bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
-          >
-            <Download className="h-4 w-4 mr-2" />
-            Install App
-          </button>
-        </div>
-      )}
+        )}
+        
+        {networkType && (
+          <div className="bg-white rounded-lg shadow-lg p-2 flex items-center">
+            <Signal className="h-4 w-4 mr-2" />
+            <span>{networkType.toUpperCase()}</span>
+          </div>
+        )}
+      </div>
 
       {/* Main map */}
       <GoogleMap
         mapContainerStyle={mapContainerStyle}
         center={center}
-        zoom={12}
-        onLoad={onLoad}
+        zoom={zoom}
+        onLoad={handleMapLoad}
         options={{
           zoomControl: true,
           streetViewControl: true
         }}
       >
-        {/* Route polylines */}
+        {/* Routes */}
         {routes.map((route, index) => (
           visibleRoutes[index] && (
             <Polyline
@@ -285,12 +618,13 @@ const SafeRouteNavigator = () => {
                 strokeColor: routeColors[index],
                 strokeOpacity: 1.0,
                 strokeWeight: 3,
+                clickable: true
               }}
             />
           )
         ))}
 
-        {/* User location marker */}
+        {/* User location */}
         {userPosition && (
           <>
             <Circle
@@ -320,7 +654,7 @@ const SafeRouteNavigator = () => {
           </>
         )}
 
-        {/* Start marker */}
+        {/* Start and end markers */}
         {startPoint && (
           <Marker
             position={startPoint}
@@ -340,7 +674,6 @@ const SafeRouteNavigator = () => {
           />
         )}
 
-        {/* End marker */}
         {endPoint && (
           <Marker
             position={endPoint}
@@ -361,84 +694,47 @@ const SafeRouteNavigator = () => {
         )}
       </GoogleMap>
 
-      {/* Route selection panel */}
-      <div className="absolute top-4 left-4 bg-white rounded-lg shadow-lg p-4 min-w-[240px]">
-        <h2 className="text-xl font-bold mb-4">Route Selection</h2>
-        <div className="space-y-4">
-          {routeColors.map((color, index) => {
-            const descriptions = ["Lowest Distance", "High Risk", "Medium Risk", "Lowest Risk"];
-            const visibleCount = visibleRoutes.filter(route => route).length;
-            const isLastVisible = visibleCount === 1 && visibleRoutes[index];
-            
-            return (
-              <div key={index} className="flex items-center justify-between">
-                <label className={`relative inline-flex items-center ${isLastVisible ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
-                  <input
-                    type="checkbox"
-                    checked={visibleRoutes[index]}
-                    onChange={() => toggleRoute(index)}
-                    className="sr-only peer"
-                    disabled={isLastVisible}
-                  />
-                  <div className="w-14 h-8 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 
-                                peer-focus:ring-blue-300 rounded-full peer dark:bg-gray-700 
-                                peer-checked:after:translate-x-full peer-checked:bg-black 
-                                after:content-[''] after:absolute after:top-[2px] after:left-[2px] 
-                                after:bg-white after:border-gray-300 after:border after:rounded-full 
-                                after:h-7 after:w-7 after:transition-all">
-                  </div>
-                  <span className={`ml-4 text-base font-medium ${isLastVisible ? 'opacity-50' : ''}`}>
-                    {descriptions[index]}
-                  </span>
-                </label>
-                <div 
-                  className="w-4 h-4 rounded-full"
-                  style={{ backgroundColor: color }}
-                />
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Navigation controls */}
+      {/* Controls and UI components */}
       <div className="absolute bottom-20 right-4 space-y-2">
         <button
-          onClick={handleGoToStart}
-          className="bg-white p-3 rounded-full shadow-lg hover:bg-gray-100 block"
-          aria-label="Go to start point"
-          title="Go to start point"
-        >
-          <MapPin className="h-6 w-6" />
-        </button>
-        <button
           onClick={handleCenterMap}
-          className="bg-white p-3 rounded-full shadow-lg hover:bg-gray-100 block"
+          className="bg-white p-3 rounded-full shadow-lg hover:bg-gray-100 transition-colors"
           aria-label="Center map on current location"
-          title="Center map on current location"
         >
           <Compass className="h-6 w-6" />
         </button>
       </div>
 
-{/* Legend (continued) */}
-<div className="absolute bottom-4 left-4 bg-white rounded-lg shadow-lg p-4">
-        <h3 className="text-lg font-semibold mb-2">Legend</h3>
-        <div className="space-y-2">
-          <div className="flex items-center">
-            <div className="w-4 h-4 rounded-full bg-green-500 mr-2" />
-            <span>Start Point</span>
-          </div>
-          <div className="flex items-center">
-            <div className="w-4 h-4 rounded-full bg-red-500 mr-2" />
-            <span>End Point</span>
-          </div>
-          {accuracy && (
-            <div className="flex items-center">
-              <div className="w-4 h-4 rounded-full bg-blue-400 opacity-20 mr-2" />
-              <span>GPS Accuracy: {Math.round(accuracy)}m</span>
-            </div>
-          )}
+      {/* Route selection panel */}
+      <div className="absolute top-4 left-4 bg-white rounded-lg shadow-lg p-4 max-w-xs">
+        <h2 className="text-xl font-bold mb-4">Routes</h2>
+        <div className="space-y-4">
+          {routeColors.map((color, index) => (
+            <button
+              key={index}
+              onClick={() => handleRouteToggle(index)}
+              className={`w-full flex items-center justify-between p-2 rounded ${
+                visibleRoutes[index] ? 'bg-gray-100' : 'bg-white'
+              }`}
+            >
+              <span>Route {index + 1}</span>
+              <div 
+                className="w-4 h-4 rounded-full"
+                style={{ backgroundColor: color }}
+              />
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Status panel */}
+      <div className="absolute bottom-4 left-4 bg-white rounded-lg shadow-lg p-4">
+        <h3 className="text-lg font-semibold mb-2">Status</h3>
+        <div className="space-y-2 text-sm">
+          <p>Accuracy: {accuracy ? `${Math.round(accuracy)}m` : 'N/A'}</p>
+          <p>Speed: {speed ? `${Math.round(speed * 3.6)}km/h` : 'N/A'}</p>
+          <p>Altitude: {altitude ? `${Math.round(altitude)}m` : 'N/A'}</p>
+          <p>Last sync: {lastSync ? new Date(lastSync).toLocaleTimeString() : 'Never'}</p>
         </div>
       </div>
     </div>
