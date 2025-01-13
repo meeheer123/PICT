@@ -7,7 +7,7 @@ const mapContainerStyle = {
   height: '100vh'
 };
 
-const routeColors = ["#4BC0C0", "#FF6384", "#FFCE56", "#36A2EB"];
+const routeColors = ["#FFA500", "#FF0000", "#FFF000", "#00FF00"];
 const routeNames = ["Fastest Route", "High Risk", "Medium Risk", "Safest Route"];
 const NAVIGATION_ARROW = "M0 10L-5 -10L0 -7L5 -10L0 10Z";
 
