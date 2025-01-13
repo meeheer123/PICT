@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { GoogleMap, useJsApiLoader, Polyline, Marker, Circle } from '@react-google-maps/api';
-import { Map, Eye, EyeOff, ChevronRight, InfoIcon, Compass, WifiOff, Layers, Battery, Signal, Crosshair, Flag, Menu, X, Sun, Moon, Share2, Download, AlertTriangle, MapPin } from 'lucide-react';
+import { Map, Eye, EyeOff, Info, Compass, WifiOff, Layers, Battery, Signal, Crosshair, Flag, Menu, X, Sun, Moon, Share2, Download, AlertTriangle, MapPin, ChevronLeft } from 'lucide-react';
 
 const mapContainerStyle = {
   width: '100%',
-  height: '100%'
+  height: '100vh'
 };
 
-const routeColors = ["#FF6384", "#36A2EB", "#FFCE56"];
+const routeColors = ["#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0"];
 const NAVIGATION_ARROW = "M0 10L-5 -10L0 -7L5 -10L0 10Z";
 
 const defaultCenter = {
@@ -20,7 +20,7 @@ const SafeRouteNavigator = () => {
   const [mapRef, setMapRef] = useState(null);
   const [zoom, setZoom] = useState(15);
   const [routes, setRoutes] = useState([]);
-  const [visibleRoutes, setVisibleRoutes] = useState([true, true, true]);
+  const [visibleRoutes, setVisibleRoutes] = useState([true, true, true, true]);
   const [startPoint, setStartPoint] = useState(null);
   const [endPoint, setEndPoint] = useState(null);
   const [userPosition, setUserPosition] = useState(null);
@@ -34,7 +34,7 @@ const SafeRouteNavigator = () => {
   const [networkType, setNetworkType] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDarkMode, setIsDarkMode] = useState(false);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [activePanel, setActivePanel] = useState(null);
   const [showWeatherAlert, setShowWeatherAlert] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
 
@@ -255,30 +255,36 @@ const SafeRouteNavigator = () => {
 
   return (
     <div className={`relative w-full h-screen ${isDarkMode ? 'dark' : ''}`}>
+      <style jsx global>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        
+        html, body {
+          font-family: 'Inter', sans-serif;
+        }
+
+        .dark {
+          color-scheme: dark;
+        }
+
+        .bottom-sheet {
+          transition: transform 0.3s ease-out;
+        }
+
+        .bottom-sheet-open {
+          transform: translateY(0);
+        }
+
+        .bottom-sheet-closed {
+          transform: translateY(100%);
+        }
+      `}</style>
+
       {!isOnline && (
         <div className="absolute top-0 left-0 right-0 bg-yellow-500 text-white p-2 text-center z-50 flex items-center justify-center">
           <WifiOff className="mr-2 h-5 w-5" />
           <span className="font-semibold">Offline mode - Using cached data</span>
         </div>
       )}
-
-      <div className="absolute top-4 right-4 space-y-2 z-40">
-        {batteryLevel !== null && (
-          <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-lg p-2 flex items-center ${
-            isLowPower ? 'text-red-500' : 'text-green-500'
-          }`}>
-            <Battery className="h-5 w-5 mr-2" />
-            <span className="font-medium">{Math.round(batteryLevel * 100)}%</span>
-          </div>
-        )}
-        
-        {networkType && (
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-2 flex items-center">
-            <Signal className="h-5 w-5 mr-2" />
-            <span className="font-medium">{networkType.toUpperCase()}</span>
-          </div>
-        )}
-      </div>
 
       <GoogleMap
         mapContainerStyle={mapContainerStyle}
@@ -369,6 +375,7 @@ const SafeRouteNavigator = () => {
         )}
       </GoogleMap>
 
+      {/* Floating Action Buttons */}
       <div className="absolute bottom-24 right-4 space-y-2">
         <button
           onClick={handleCenterOnUser}
@@ -386,110 +393,148 @@ const SafeRouteNavigator = () => {
         </button>
       </div>
 
-      <button
-        onClick={() => setIsMenuOpen(true)}
-        className="absolute top-4 left-4 bg-white dark:bg-gray-800 p-2 rounded-full shadow-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
-        aria-label="Open menu"
-      >
-        <Menu className="h-6 w-6 text-gray-700 dark:text-gray-300" />
-      </button>
-
-      {isMenuOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-80">
-            <div className="flex justify-between items-center mb-4">
+      {/* Bottom Sheet */}
+      <div className={`fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 rounded-t-3xl shadow-lg p-4 z-50 bottom-sheet ${activePanel ? 'bottom-sheet-open' : 'bottom-sheet-closed'}`}>
+        <div className="w-12 h-1 bg-gray-300 dark:bg-gray-600 rounded-full mx-auto mb-4"></div>
+        
+        {activePanel === 'menu' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between mb-4">
+              <button
+                onClick={() => setActivePanel(null)}
+                className="p-2 rounded-full text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                aria-label="Go back"
+              >
+                <ChevronLeft className="h-6 w-6" />
+              </button>
               <h2 className="text-xl font-bold text-gray-800 dark:text-gray-200">Menu</h2>
-              <button
-                onClick={() => setIsMenuOpen(false)}
-                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-              >
-                <X className="h-6 w-6" />
-              </button>
+              <div className="w-8"></div> {/* Spacer for alignment */}
             </div>
-            <div className="space-y-4">
+            <button
+              onClick={toggleDarkMode}
+              className="w-full flex items-center justify-between p-3 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+            >
+              <span className="text-gray-800 dark:text-gray-200">Toggle Dark Mode</span>
+              {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            </button>
+            <button
+              onClick={handleShare}
+              className="w-full flex items-center justify-between p-3 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+            >
+              <span className="text-gray-800 dark:text-gray-200">Share Route</span>
+              <Share2 className="h-5 w-5" />
+            </button>
+            {deferredPrompt && (
               <button
-                onClick={toggleDarkMode}
-                className="w-full flex items-center justify-between p-2 rounded bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                onClick={handleInstall}
+                className="w-full flex items-center justify-between p-3 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
               >
-                <span className="text-gray-800 dark:text-gray-200">Toggle Dark Mode</span>
-                {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+                <span className="text-gray-800 dark:text-gray-200">Install App</span>
+                <Download className="h-5 w-5" />
               </button>
+            )}
+          </div>
+        )}
+
+        {activePanel === 'routes' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between mb-4">
               <button
-                onClick={handleShare}
-                className="w-full flex items-center justify-between p-2 rounded bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                onClick={() => setActivePanel(null)}
+                className="p-2 rounded-full text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                aria-label="Go back"
               >
-                <span className="text-gray-800 dark:text-gray-200">Share Route</span>
-                <Share2 className="h-5 w-5" />
+                <ChevronLeft className="h-6 w-6" />
               </button>
-              {deferredPrompt && (
-                <button
-                  onClick={handleInstall}
-                  className="w-full flex items-center justify-between p-2 rounded bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                >
-                  <span className="text-gray-800 dark:text-gray-200">Install App</span>
-                  <Download className="h-5 w-5" />
-                </button>
-              )}
+              <h2 className="text-xl font-bold text-gray-800 dark:text-gray-200">Route Options</h2>
+              <div className="w-8"></div> {/* Spacer for alignment */}
+            </div>
+            {routeColors.map((color, index) => (
+              <button
+                key={index}
+                onClick={() => handleRouteToggle(index)}
+                className={`w-full flex items-center justify-between p-3 rounded-lg transition-colors ${
+                  visibleRoutes[index] ? 'bg-gray-100 dark:bg-gray-700' : 'bg-white dark:bg-gray-800'
+                } hover:bg-gray-200 dark:hover:bg-gray-600`}
+              >
+                <div className="flex items-center">
+                  <div 
+                    className={`w-6 h-6 rounded-full border-2 border-white dark:border-gray-800 mr-3 ${visibleRoutes[index] ? 'bg-opacity-100' : 'bg-opacity-50'}`}
+                    style={{ backgroundColor: color }}
+                  />
+                  <span className="font-medium text-gray-700 dark:text-gray-300">
+                    Route {index + 1}
+                  </span>
+                </div>
+                {visibleRoutes[index] ? (
+                  <Eye className="h-5 w-5 text-green-500" />
+                ) : (
+                  <EyeOff className="h-5 w-5 text-red-500" />
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {activePanel === 'status' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between mb-4">
+              <button
+                onClick={() => setActivePanel(null)}
+                className="p-2 rounded-full text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                aria-label="Go back"
+              >
+                <ChevronLeft className="h-6 w-6" />
+              </button>
+              <h2 className="text-xl font-bold text-gray-800 dark:text-gray-200">Status</h2>
+              <div className="w-8"></div> {/* Spacer for alignment */}
+            </div>
+            <div className="space-y-2 text-sm">
+              <p className="flex items-center text-gray-600 dark:text-gray-400">
+                <MapPin className="h-4 w-4 mr-2" />
+                <span className="font-medium">Accuracy:</span> {accuracy ? `${Math.round(accuracy)}m` : 'N/A'}
+              </p>
+              <p className="flex items-center text-gray-600 dark:text-gray-400">
+                <Compass className="h-4 w-4 mr-2" />
+                <span className="font-medium">Speed:</span> {speed ? `${Math.round(speed * 3.6)}km/h` : 'N/A'}
+              </p>
+              <p className="flex items-center text-gray-600 dark:text-gray-400">
+                <Layers className="h-4 w-4 mr-2" />
+                <span className="font-medium">Altitude:</span> {altitude ? `${Math.round(altitude)}m` : 'N/A'}
+              </p>
+              <p className="flex items-center text-gray-600 dark:text-gray-400">
+                <Battery className="h-4 w-4 mr-2" />
+                <span className="font-medium">Battery:</span> {batteryLevel !== null ? `${Math.round(batteryLevel * 100)}%` : 'N/A'}
+              </p>
+              <p className="flex items-center text-gray-600 dark:text-gray-400">
+                <Signal className="h-4 w-4 mr-2" />
+                <span className="font-medium">Network:</span> {networkType ? networkType.toUpperCase() : 'N/A'}
+              </p>
             </div>
           </div>
-        </div>
-      )}
-
-      <div className="absolute top-4 left-4 bg-white dark:bg-gray-800 bg-opacity-90 dark:bg-opacity-90 rounded-lg shadow-lg p-4 max-w-sm z-40">
-        <h2 className="text-xl font-bold mb-4 text-gray-800 dark:text-gray-200 flex items-center">
-          <Map className="h-6 w-6 mr-2 text-blue-500" />
-          Route Options
-        </h2>
-        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Select the routes you want to display on the map:</p>
-        <div className="space-y-2">
-          {routeColors.map((color, index) => (
-            <button
-              key={index}
-              onClick={() => handleRouteToggle(index)}
-              className={`w-full flex items-center justify-between p-2 rounded transition-colors ${
-                visibleRoutes[index] ? 'bg-gray-100 dark:bg-gray-700' : 'bg-white dark:bg-gray-800'
-              } hover:bg-gray-200 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500`}
-            >
-              <div className="flex items-center">
-                <div 
-                  className={`w-6 h-6 rounded-full border-2 border-white dark:border-gray-800 mr-3 ${visibleRoutes[index] ? 'bg-opacity-100' : 'bg-opacity-50'}`}
-                  style={{ backgroundColor: color }}
-                />
-                <span className="font-medium text-gray-700 dark:text-gray-300">
-                  {visibleRoutes[index] ? (
-                    <Eye className="h-5 w-5 text-green-500 mr-2" />
-                  ) : (
-                    <EyeOff className="h-5 w-5 text-red-500 mr-2" />
-                  )}
-                  Route {index + 1}
-                </span>
-              </div>
-              <ChevronRight className={`h-5 w-5 text-gray-400 transition-transform ${visibleRoutes[index] ? 'transform rotate-90' : ''}`} />
-            </button>
-          ))}
-        </div>
-        <div className="mt-4 text-sm text-gray-600 dark:text-gray-400">
-          <InfoIcon className="h-5 w-5 inline-block mr-2 text-blue-500" />
-          Click on a route to show/hide it on the map.
-        </div>
+        )}
       </div>
 
-      <div className="absolute bottom-4 left-4 bg-white dark:bg-gray-800 bg-opacity-90 dark:bg-opacity-90 rounded-lg shadow-lg p-4 max-w-xs z-40">
-        <h3 className="text-lg font-semibold mb-2 text-gray-800 dark:text-gray-200">Status</h3>
-        <div className="space-y-2 text-sm">
-          <p className="flex items-center text-gray-600 dark:text-gray-400">
-            <MapPin className="h-4 w-4 mr-2" />
-            <span className="font-medium">Accuracy:</span> {accuracy ? `${Math.round(accuracy)}m` : 'N/A'}
-          </p>
-          <p className="flex items-center text-gray-600 dark:text-gray-400">
-            <Compass className="h-4 w-4 mr-2" />
-            <span className="font-medium">Speed:</span> {speed ? `${Math.round(speed * 3.6)}km/h` : 'N/A'}
-          </p>
-          <p className="flex items-center text-gray-600 dark:text-gray-400">
-            <Layers className="h-4 w-4 mr-2" />
-            <span className="font-medium">Altitude:</span> {altitude ? `${Math.round(altitude)}m` : 'N/A'}
-          </p>
-        </div>
+      {/* Bottom Navigation */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 flex justify-around items-center p-2 z-40">
+        <button
+          onClick={() => setActivePanel(activePanel === 'menu' ? null : 'menu')}
+          className={`p-2 rounded-full ${activePanel === 'menu' ? 'bg-blue-500 text-white' : 'text-gray-600 dark:text-gray-400'}`}
+        >
+          <Menu className="h-6 w-6" />
+        </button>
+        <button
+          onClick={() => setActivePanel(activePanel === 'routes' ? null : 'routes')}
+          className={`p-2 rounded-full ${activePanel === 'routes' ? 'bg-blue-500 text-white' : 'text-gray-600 dark:text-gray-400'}`}
+        >
+          <Map className="h-6 w-6" />
+        </button>
+        <button
+          onClick={() => setActivePanel(activePanel === 'status' ? null : 'status')}
+          className={`p-2 rounded-full ${activePanel === 'status' ? 'bg-blue-500 text-white' : 'text-gray-600 dark:text-gray-400'}`}
+        >
+          <Info className="h-6 w-6" />
+        </button>
       </div>
 
       {isLoading && (
@@ -502,9 +547,9 @@ const SafeRouteNavigator = () => {
       )}
 
       {showWeatherAlert && (
-        <div className="absolute bottom-24 left-1/2 transform -translate-x-1/2 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 rounded shadow-lg z-50">
+        <div className="absolute bottom-24 left-4 right-4 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 rounded-lg shadow-lg z-50">
           <div className="flex items-center">
-            <AlertTriangle className="h-6 w-6 mr-2" />
+            <AlertTriangle className="h-6 w-6 mr-2 flex-shrink-0" />
             <p className="font-bold">Weather Alert: Heavy rain expected in your area.</p>
           </div>
           <p className="mt-2">Please take necessary precautions and stay safe.</p>
