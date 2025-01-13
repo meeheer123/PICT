@@ -16,6 +16,8 @@ const defaultCenter = {
   lng: -87.6768
 };
 
+const libraries = ['places'];
+
 const SafeRouteNavigator = () => {
   const [center, setCenter] = useState(defaultCenter);
   const [mapRef, setMapRef] = useState(null);
@@ -41,7 +43,7 @@ const SafeRouteNavigator = () => {
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
     googleMapsApiKey: 'AIzaSyAnAszR8yWJ-xrdN61WpGU4ki08WXygS64',
-    libraries: ['places']
+    libraries: libraries
   });
 
   const watchPositionRef = useRef(null);
@@ -54,7 +56,7 @@ const SafeRouteNavigator = () => {
         timeout: 5000,
         maximumAge: 0
       };
-
+  
       watchPositionRef.current = navigator.geolocation.watchPosition(
         (position) => {
           const { latitude, longitude, accuracy, speed, altitude } = position.coords;
@@ -71,57 +73,52 @@ const SafeRouteNavigator = () => {
     }
   }, []);
 
+  const getExactLocation = (map) => {
+    return new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          
+          // Remove Places API call and directly return GPS coordinates
+          resolve({
+            lat: latitude,
+            lng: longitude,
+            accuracy: position.coords.accuracy,
+            speed: position.coords.speed,
+            altitude: position.coords.altitude
+          });
+        },
+        (error) => reject(error),
+        {
+          enableHighAccuracy: true,
+          timeout: 5000,
+          maximumAge: 0
+        }
+      );
+    });
+  };
+
   const startLocationTracking = useCallback(() => {
-    if (!isOnline) {
+    if (!isOnline || !mapRef) {
       startNavigatorGeolocation();
       return;
     }
-
-    if (mapRef && window.google) {
-      const locationUpdate = () => {
-        const service = new window.google.maps.places.PlacesService(mapRef);
-        
-        if (navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(
-            (position) => {
-              const { latitude, longitude, accuracy, speed, altitude } = position.coords;
-              const location = new window.google.maps.LatLng(latitude, longitude);
-              
-              service.nearbySearch({
-                location: location,
-                radius: 1
-              }, (results, status) => {
-                if (status === window.google.maps.places.PlacesServiceStatus.OK) {
-                  setUserPosition({ lat: latitude, lng: longitude });
-                  setAccuracy(accuracy);
-                  setSpeed(speed);
-                  setAltitude(altitude);
-                } else {
-                  setUserPosition({ lat: latitude, lng: longitude });
-                  setAccuracy(accuracy);
-                  setSpeed(speed);
-                  setAltitude(altitude);
-                }
-              });
-            },
-            (error) => {
-              console.error("Geolocation error:", error);
-              startNavigatorGeolocation();
-            },
-            {
-              enableHighAccuracy: true,
-              timeout: 5000,
-              maximumAge: 0
-            }
-          );
-        }
-      };
-
-      locationUpdate();
-      watchId.current = setInterval(locationUpdate, 1000);
-    } else {
-      startNavigatorGeolocation();
-    }
+  
+    const locationUpdate = async () => {
+      try {
+        const exactLocation = await getExactLocation(mapRef);
+        setUserPosition({ lat: exactLocation.lat, lng: exactLocation.lng });
+        setAccuracy(exactLocation.accuracy);
+        setSpeed(exactLocation.speed);
+        setAltitude(exactLocation.altitude);
+      } catch (error) {
+        console.error("Error getting location:", error);
+        startNavigatorGeolocation();
+      }
+    };
+  
+    locationUpdate();
+    watchId.current = setInterval(locationUpdate, 1000);
   }, [isOnline, mapRef, startNavigatorGeolocation]);
 
   const stopLocationTracking = useCallback(() => {
@@ -309,7 +306,7 @@ const SafeRouteNavigator = () => {
 
   return (
     <div className={`relative w-full h-screen ${isDarkMode ? 'dark' : ''}`}>
-      <style jsx global>{`
+      <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         
         html, body {
