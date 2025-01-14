@@ -35,7 +35,7 @@ export default function Header() {
           </div>
           
           <div className="hidden md:block">
-            <button className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 hover:scale-105 transition-transform" onClick={() => window.location.href = "/safe-route"}>
+            <button className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 hover:scale-105 transition-transform" onClick={() => window.location.href = "/sign-up"}>
               Get Started
             </button>
           </div>
