@@ -18,49 +18,6 @@ export default function Header() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-
-
-   const [showInstallButton, setShowInstallButton] = useState(false);
-  
-    useEffect(() => {
-      const handleScroll = () => setScrollY(window.scrollY);
-      window.addEventListener("scroll", handleScroll);
-  
-      // Handle PWA install prompt
-      window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault();
-        setDeferredPrompt(e);
-        setShowInstallButton(true);
-      });
-  
-      window.addEventListener('appinstalled', () => {
-        setShowInstallButton(false);
-        setDeferredPrompt(null);
-      });
-  
-      return () => {
-        window.removeEventListener("scroll", handleScroll);
-        window.removeEventListener('beforeinstallprompt', () => {});
-        window.removeEventListener('appinstalled', () => {});
-      };
-    }, []);
-  
-    const handleToggleMute = () => {
-      setIsMuted(!isMuted);
-    };
-  
-    const handleInstallClick = async () => {
-      if (!deferredPrompt) return;
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      setDeferredPrompt(null);
-      if (outcome === 'accepted') {
-        setShowInstallButton(false);
-      }
-    };
-  
-
-
   return (
     <motion.header
       className={`bg-white shadow-sm sticky top-0 z-50 transition-all duration-300 ${
@@ -72,20 +29,6 @@ export default function Header() {
     >
       <nav className="container mx-auto px-4 sm:px-6 lg:px-8" aria-label="Top">
         <div className="flex items-center justify-between h-16">
-          {showInstallButton && (
-            <motion.div
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
-            >
-              <button
-                onClick={handleInstallClick}
-                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg shadow-lg hover:bg-blue-700 transition-colors"
-              >
-                <Download className="w-5 h-5" />
-                Install App
-              </button>
-            </motion.div>
-          )}
           <motion.div
             className="flex items-center"
             whileHover={{ scale: 1.05 }}
@@ -123,7 +66,6 @@ export default function Header() {
               Get Started
             </motion.button>
           </div>
-
           <div className="md:hidden">
             <motion.button
               onClick={() => setIsOpen(!isOpen)}
@@ -162,7 +104,6 @@ export default function Header() {
                   </a>
                 </motion.div>
               ))}
-
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}

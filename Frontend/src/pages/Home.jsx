@@ -15,25 +15,33 @@ export default function Home() {
   useEffect(() => {
     const handleScroll = () => setScrollY(window.scrollY);
     window.addEventListener("scroll", handleScroll);
-
+  
     // Handle PWA install prompt
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       setDeferredPrompt(e);
-      setShowInstallButton(true);
+  
+      // Check if the app is already installed
+      const isStandalone =
+        window.matchMedia('(display-mode: standalone)').matches ||
+        window.navigator.standalone;
+  
+      if (!isStandalone) {
+        setShowInstallButton(true);
+      }
     });
-
+  
     window.addEventListener('appinstalled', () => {
       setShowInstallButton(false);
       setDeferredPrompt(null);
     });
-
+  
     return () => {
       window.removeEventListener("scroll", handleScroll);
       window.removeEventListener('beforeinstallprompt', () => {});
       window.removeEventListener('appinstalled', () => {});
     };
-  }, []);
+  }, []);  
 
   const handleToggleMute = () => {
     setIsMuted(!isMuted);
@@ -56,20 +64,36 @@ export default function Home() {
         {/* Hero Section */}
         <section className="py-20 relative overflow-hidden">
           <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-            {showInstallButton && (
-              <motion.div
-                initial={{ opacity: 0, y: -20 }}
-                animate={{ opacity: 1, y: 0 }}
-              >
-                <button
-                  onClick={handleInstallClick}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg shadow-lg hover:bg-blue-700 transition-colors"
-                >
-                  <Download className="w-5 h-5" />
-                  Install App
-                </button>
-              </motion.div>
-            )}
+          {showInstallButton && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.3 }}
+              className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50"
+            >
+              <div className="bg-white rounded-lg shadow-lg p-6">
+                <h2 className="text-lg font-semibold mb-4 text-gray-800">Install SafeRoute</h2>
+                <p className="mb-6 text-gray-600">
+                  Add the app to your home screen for quick and easy access.
+                </p>
+                <div className="flex justify-end space-x-4">
+                  <button
+                    onClick={() => setShowInstallButton(false)}
+                    className="px-4 py-2 text-sm text-gray-600 bg-gray-200 rounded-lg hover:bg-gray-300"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleInstallClick}
+                    className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+                  >
+                    Install
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
             <motion.div
               initial={{ opacity: 0, y: 50 }}
               animate={{ opacity: 1, y: 0 }}
