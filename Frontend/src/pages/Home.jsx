@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import Header from "../components/Header";
-import { MapPin, Shield, Zap, Clock, ThumbsUp, Users, Volume2, VolumeX } from 'lucide-react';
+import { MapPin, Shield, Zap, Clock, ThumbsUp, Users, Volume2, VolumeX, Download } from 'lucide-react';
 import { motion } from "framer-motion";
 import mobileDesign from "../assets/mobile-design.png";
 import homeVideo from "../assets/homevideo.mp4";
@@ -9,15 +9,44 @@ import homeMap from "../assets/home-map.png";
 export default function Home() {
   const [isMuted, setIsMuted] = useState(true);
   const [scrollY, setScrollY] = useState(0);
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [showInstallButton, setShowInstallButton] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => setScrollY(window.scrollY);
     window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
+
+    // Handle PWA install prompt
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setShowInstallButton(true);
+    });
+
+    window.addEventListener('appinstalled', () => {
+      setShowInstallButton(false);
+      setDeferredPrompt(null);
+    });
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener('beforeinstallprompt', () => {});
+      window.removeEventListener('appinstalled', () => {});
+    };
   }, []);
 
   const handleToggleMute = () => {
     setIsMuted(!isMuted);
+  };
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    setDeferredPrompt(null);
+    if (outcome === 'accepted') {
+      setShowInstallButton(false);
+    }
   };
 
   return (
@@ -27,6 +56,21 @@ export default function Home() {
         {/* Hero Section */}
         <section className="py-20 relative overflow-hidden">
           <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+            {showInstallButton && (
+              <motion.div
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="fixed top-20 right-4 z-50"
+              >
+                <button
+                  onClick={handleInstallClick}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg shadow-lg hover:bg-blue-700 transition-colors"
+                >
+                  <Download className="w-5 h-5" />
+                  Install App
+                </button>
+              </motion.div>
+            )}
             <motion.div
               initial={{ opacity: 0, y: 50 }}
               animate={{ opacity: 1, y: 0 }}
