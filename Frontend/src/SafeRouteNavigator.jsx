@@ -32,13 +32,12 @@ const SafeRouteNavigator = () => {
   const [speed, setSpeed] = useState(null);
   const [altitude, setAltitude] = useState(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [batteryLevel, setBatteryLevel] = useState(null);
-  const [isLowPower, setIsLowPower] = useState(false);
   const [networkType, setNetworkType] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [activePanel, setActivePanel] = useState(null);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [isAppInstalled, setIsAppInstalled] = useState(false);
 
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
@@ -79,7 +78,6 @@ const SafeRouteNavigator = () => {
         (position) => {
           const { latitude, longitude } = position.coords;
           
-          // Remove Places API call and directly return GPS coordinates
           resolve({
             lat: latitude,
             lng: longitude,
@@ -248,6 +246,7 @@ const SafeRouteNavigator = () => {
       deferredPrompt.userChoice.then((choiceResult) => {
         if (choiceResult.outcome === 'accepted') {
           console.log('User accepted the install prompt');
+          setIsAppInstalled(true);
         } else {
           console.log('User dismissed the install prompt');
         }
@@ -271,20 +270,19 @@ const SafeRouteNavigator = () => {
       });
     }
 
-    if ('getBattery' in navigator) {
-      navigator.getBattery().then(battery => {
-        const updateBatteryStatus = () => {
-          setBatteryLevel(battery.level);
-          setIsLowPower(battery.level <= 0.2);
-        };
-        battery.addEventListener('levelchange', updateBatteryStatus);
-        updateBatteryStatus();
-      });
+    // Check if the app is already installed
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsAppInstalled(true);
     }
 
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       setDeferredPrompt(e);
+    });
+
+    window.addEventListener('appinstalled', () => {
+      setIsAppInstalled(true);
+      setDeferredPrompt(null);
     });
 
     return () => {
@@ -443,6 +441,18 @@ const SafeRouteNavigator = () => {
         </button>
       </div>
 
+      {!isAppInstalled && deferredPrompt && (
+        <div className="fixed bottom-20 left-4 right-4 bg-blue-500 text-white p-4 rounded-lg shadow-lg z-50 flex items-center justify-between">
+          <span className="font-semibold">Install Safe Route Navigator</span>
+          <button
+            onClick={handleInstall}
+            className="bg-white text-blue-500 px-4 py-2 rounded-md font-medium hover:bg-blue-50 transition-colors"
+          >
+            Install
+          </button>
+        </div>
+      )}
+
       {/* Bottom Sheet */}
       <div className={`fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 rounded-t-3xl shadow-lg p-4 z-50 bottom-sheet ${activePanel ? 'bottom-sheet-open' : 'bottom-sheet-closed'}`}>
         <div className="w-12 h-1 bg-gray-300 dark:bg-gray-600 rounded-full mx-auto mb-4"></div>
@@ -474,15 +484,6 @@ const SafeRouteNavigator = () => {
               <span className="text-gray-800 dark:text-gray-200">Share Route</span>
               <Share2 className="h-5 w-5" />
             </button>
-            {deferredPrompt && (
-              <button
-                onClick={handleInstall}
-                className="w-full flex items-center justify-between p-3 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-              >
-                <span className="text-gray-800 dark:text-gray-200">Install App</span>
-                <Download className="h-5 w-5" />
-              </button>
-            )}
           </div>
         )}
 
@@ -551,10 +552,6 @@ const SafeRouteNavigator = () => {
               <p className="flex items-center text-gray-600 dark:text-gray-400">
                 <Layers className="h-4 w-4 mr-2" />
                 <span className="font-medium">Altitude:</span> {altitude ? `${Math.round(altitude)}m` : 'N/A'}
-              </p>
-              <p className="flex items-center text-gray-600 dark:text-gray-400">
-                <Battery className="h-4 w-4 mr-2" />
-                <span className="font-medium">Battery:</span> {batteryLevel !== null ? `${Math.round(batteryLevel * 100)}%` : 'N/A'}
               </p>
               <p className="flex items-center text-gray-600 dark:text-gray-400">
                 <Signal className="h-4 w-4 mr-2" />
