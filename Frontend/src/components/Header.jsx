@@ -119,7 +119,6 @@ export default function Header() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md transition duration-300 ease-in-out shadow-md hover:bg-blue-700"
-              onClick={() => window.location.href = '/sign-up'}
             >
               Get Started
             </motion.button>
@@ -179,4 +178,3 @@ export default function Header() {
     </motion.header>
   );
 }
-
