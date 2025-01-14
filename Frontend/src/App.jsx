@@ -6,27 +6,6 @@ import Information from './pages/Information';
 import SafeRouteNavigator from './pages/SafeRouteNavigator';
 import SignUpPage from './pages/SignUpPage';
 
-const ProtectedRoute = ({ children }) => {
-    const { user } = useUser();
-
-    if (!user) {
-        return <RedirectToSignIn />;
-    }
-
-    const hasFilledInformation = user?.publicMetadata?.hasFilledInformation;
-
-    if (!hasFilledInformation) {
-        console.log("Hi")
-        return <Navigate to="/information" />;
-    }
-    else
-    {
-        console.log(user?.publicMetadata?.hasFilledInformation)
-    }
-
-    return children;
-};
-
 function App() {
     return (
         <Router>
@@ -43,9 +22,7 @@ function App() {
                     path="/safe-route"
                     element={
                         <SignedIn>
-                            <ProtectedRoute>
-                                <SafeRouteNavigator />
-                            </ProtectedRoute>
+                            <SafeRouteNavigator />
                         </SignedIn>
                     }
                 />
