@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { GoogleMap, useJsApiLoader, Polyline, Marker, Circle } from '@react-google-maps/api';
-import { Crosshair, Flag, WifiOff, Menu, Share2, Download, MapPin, ChevronLeft, Sun, Moon } from 'lucide-react';
+import { Map, Eye, EyeOff, Info, Compass, WifiOff, Layers, Battery, Signal, Crosshair, Flag, Menu, Sun, Moon, Share2, Download, MapPin, ChevronLeft } from 'lucide-react';
 
 const mapContainerStyle = {
   width: '100%',
@@ -15,6 +15,8 @@ const defaultCenter = {
   lat: 41.9088,
   lng: -87.6768
 };
+
+const libraries = ['places'];
 
 const SafeRouteNavigator = () => {
   const [center, setCenter] = useState(defaultCenter);
@@ -39,7 +41,8 @@ const SafeRouteNavigator = () => {
 
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
-    googleMapsApiKey: 'YOUR_GOOGLE_MAPS_API_KEY', // Replace with your actual key
+    googleMapsApiKey: 'AIzaSyAnAszR8yWJ-xrdN61WpGU4ki08WXygS64',
+    libraries: libraries
   });
 
   const watchPositionRef = useRef(null);
@@ -69,11 +72,12 @@ const SafeRouteNavigator = () => {
     }
   }, []);
 
-  const getExactLocation = () => {
+  const getExactLocation = (map) => {
     return new Promise((resolve, reject) => {
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const { latitude, longitude } = position.coords;
+          
           resolve({
             lat: latitude,
             lng: longitude,
@@ -100,7 +104,7 @@ const SafeRouteNavigator = () => {
   
     const locationUpdate = async () => {
       try {
-        const exactLocation = await getExactLocation();
+        const exactLocation = await getExactLocation(mapRef);
         setUserPosition({ lat: exactLocation.lat, lng: exactLocation.lng });
         setAccuracy(exactLocation.accuracy);
         setSpeed(exactLocation.speed);
@@ -165,6 +169,13 @@ const SafeRouteNavigator = () => {
     }
   }, [mapRef, userPosition]);
 
+  const handleCenterOnStart = useCallback(() => {
+    if (mapRef && startPoint) {
+      mapRef.panTo(startPoint);
+      setZoom(18);
+    }
+  }, [mapRef, startPoint]);
+
   const handleRouteToggle = useCallback((index) => {
     setVisibleRoutes(prev => {
       const newVisibleRoutes = [...prev];
@@ -172,6 +183,45 @@ const SafeRouteNavigator = () => {
       return newVisibleRoutes;
     });
   }, []);
+
+  const fetchRoutes = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('https://pict-production.up.railway.app/route', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          start_x: center.lng,
+          start_y: center.lat,
+          end_x: -87.6297,
+          end_y: 41.8781
+        })
+      });
+      
+      if (!response.ok) throw new Error('Network response was not ok');
+      
+      const data = await response.json();
+      const allRoutes = data.routes.map(route => 
+        route.path.map(point => ({
+          lat: point.Y,
+          lng: point.X
+        }))
+      );
+      
+      setRoutes(allRoutes);
+      
+      if (allRoutes.length > 0) {
+        setStartPoint(allRoutes[0][0]);
+        setEndPoint(allRoutes[0][allRoutes[0].length - 1]);
+      }
+    } catch (error) {
+      console.error('Error fetching routes:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [center]);
 
   const toggleDarkMode = useCallback(() => {
     setIsDarkMode(prev => !prev);
@@ -207,7 +257,8 @@ const SafeRouteNavigator = () => {
 
   useEffect(() => {
     startLocationTracking();
-    
+    fetchRoutes();
+
     window.addEventListener('deviceorientation', handleDeviceOrientation, true);
     window.addEventListener('online', () => setIsOnline(true));
     window.addEventListener('offline', () => setIsOnline(false));
@@ -238,7 +289,7 @@ const SafeRouteNavigator = () => {
       stopLocationTracking();
       window.removeEventListener('deviceorientation', handleDeviceOrientation);
     };
-  }, [handleDeviceOrientation, startLocationTracking, stopLocationTracking]);
+  }, [handleDeviceOrientation, startLocationTracking, stopLocationTracking, fetchRoutes]);
 
   if (!isLoaded) {
     return (
