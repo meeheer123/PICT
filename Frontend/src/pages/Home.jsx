@@ -54,6 +54,88 @@ export default function Home() {
       <Header />
       <main>
         {/* Hero Section */}
+        <section className="py-20 relative overflow-hidden">
+          <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+            {showInstallButton && (
+              <motion.div
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+              >
+                <button
+                  onClick={handleInstallClick}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg shadow-lg hover:bg-blue-700 transition-colors"
+                >
+                  <Download className="w-5 h-5" />
+                  Install App
+                </button>
+              </motion.div>
+            )}
+            <motion.div
+              initial={{ opacity: 0, y: 50 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8 }}
+              className="text-center mb-12"
+            >
+              <h1 className="text-5xl tracking-tight font-extrabold text-gray-900 sm:text-6xl md:text-7xl mb-4">
+                <span className="block">Navigate Safely with</span>
+                <span className="text-blue-600">Safe</span>
+                <span className="text-green-600">Route</span>
+              </h1>
+              <p className="mt-3 max-w-md mx-auto text-base text-gray-500 sm:text-lg md:mt-5 md:text-xl md:max-w-3xl">
+                Explore any area with confidence. Our AI-powered system
+                recommends the safest routes based on real-time data and your
+                preferences.
+              </p>
+              <div className="mt-10 flex justify-center space-x-4">
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="px-6 py-3 bg-blue-600 text-white text-lg font-semibold rounded-md transition duration-300 ease-in-out shadow-lg hover:bg-blue-700"
+                >
+                  Start Your Safe Route
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="px-6 py-3 border-2 border-blue-600 text-blue-600 hover:bg-blue-50 text-lg font-semibold rounded-md transition duration-300 ease-in-out"
+                >
+                  Learn More
+                </motion.button>
+              </div>
+            </motion.div>
+            <motion.div
+              initial={{ opacity: 0, y: 100 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, delay: 0.2 }}
+              className="mt-12 max-w-7xl mx-auto relative"
+            >
+              <div className="rounded-2xl overflow-hidden shadow-2xl">
+                <video
+                  className="w-full h-full object-cover"
+                  autoPlay
+                  loop
+                  muted={isMuted}
+                  playsInline
+                >
+                  <source src={homeVideo} type="video/mp4" />
+                  Your browser does not support the video tag.
+                </video>
+                <motion.button
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                  onClick={handleToggleMute}
+                  className="absolute bottom-4 right-4 p-2 bg-black/50 hover:bg-black/70 rounded-full text-white transition-colors"
+                >
+                  {isMuted ? (
+                    <VolumeX className="w-6 h-6" />
+                  ) : (
+                    <Volume2 className="w-6 h-6" />
+                  )}
+                </motion.button>
+              </div>
+            </motion.div>
+          </div>
+        </section>
           <section className="py-20 relative overflow-hidden">
             <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
               {showInstallButton && (
@@ -149,7 +231,7 @@ export default function Home() {
               transition={{ duration: 0.8 }}
               className="text-4xl font-extrabold text-gray-900 text-center mb-12"
             >
-              Why Choose SafeJourney?
+              Why Choose SafeRoute?
             </motion.h2>
             <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
               {[
@@ -221,7 +303,7 @@ export default function Home() {
               transition={{ duration: 0.8 }}
               className="text-4xl font-extrabold text-gray-900 text-center mb-12"
             >
-              How SafeJourney Works
+              How SafeRoute Works
             </motion.h2>
             <div className="max-w-3xl mx-auto">
               <motion.div
@@ -320,15 +402,18 @@ export default function Home() {
                   {[
                     {
                       title: "Security Status Indicator",
-                      description: "Displays the current security status of your organization with a clear color-coded indicator.",
+                      description:
+                        "Displays the current security status of your organization with a clear color-coded indicator.",
                     },
                     {
                       title: "Threat Landscape Overview",
-                      description: "Breaks down the threats by type (e.g., phishing, malware, ransomware) to give a detailed overview of the threat landscape.",
+                      description:
+                        "Breaks down the threats by type (e.g., phishing, malware, ransomware) to give a detailed overview of the threat landscape.",
                     },
                     {
                       title: "Incident Management",
-                      description: "Lists the number of active security incidents currently being addressed.",
+                      description:
+                        "Lists the number of active security incidents currently being addressed.",
                     },
                   ].map((item, index) => (
                     <motion.div
@@ -341,9 +426,7 @@ export default function Home() {
                       <h3 className="text-lg font-bold text-gray-900">
                         {item.title}
                       </h3>
-                      <p className="mt-2 text-gray-600">
-                        {item.description}
-                      </p>
+                      <p className="mt-2 text-gray-600">{item.description}</p>
                     </motion.div>
                   ))}
                 </div>
@@ -367,15 +450,18 @@ export default function Home() {
                   {[
                     {
                       title: "User Activity Monitoring",
-                      description: "Highlights the most frequently accessed sensitive files or databases and the users involved, ensuring transparency and control.",
+                      description:
+                        "Highlights the most frequently accessed sensitive files or databases and the users involved, ensuring transparency and control.",
                     },
                     {
                       title: "Data Access Monitoring",
-                      description: "Highlights the most frequently accessed sensitive files or databases and the users involved.",
+                      description:
+                        "Highlights the most frequently accessed sensitive files or databases and the users involved.",
                     },
                     {
                       title: "Compliance Monitoring",
-                      description: "Our system continuously monitors your network and data environments for any suspicious activities.",
+                      description:
+                        "Our system continuously monitors your network and data environments for any suspicious activities.",
                     },
                   ].map((item, index) => (
                     <motion.div
@@ -388,9 +474,7 @@ export default function Home() {
                       <h3 className="text-lg font-bold text-gray-900">
                         {item.title}
                       </h3>
-                      <p className="mt-2 text-gray-600">
-                        {item.description}
-                      </p>
+                      <p className="mt-2 text-gray-600">{item.description}</p>
                     </motion.div>
                   ))}
                 </div>
@@ -400,7 +484,7 @@ export default function Home() {
         </section>
 
         {/* Testimonial Section */}
-        <section className="py-24 bg-blue-600">
+        {/* <section className="py-24 bg-blue-600">
           <div className="container mx-auto px-4 sm:px-6 lg:px-8">
             <motion.div
               initial={{ opacity: 0, y: 50 }}
@@ -487,7 +571,7 @@ export default function Home() {
               ))}
             </div>
           </div>
-        </section>
+        </section> */}
 
         {/* Footer */}
         <footer className="bg-gray-900 text-gray-300">
@@ -613,7 +697,7 @@ export default function Home() {
 
             <div className="border-t border-gray-800 py-8">
               <p className="text-center text-gray-400 text-sm">
-                © {new Date().getFullYear()} SafeJourney. All rights reserved.
+                © {new Date().getFullYear()} SafeRoute. All rights reserved.
               </p>
             </div>
           </div>
