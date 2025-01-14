@@ -1,19 +1,18 @@
 import React from 'react';
-import SafeRouteNavigator from './SafeRouteNavigator';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import Home from './pages/Home'
+import Information from './pages/Information'
+import SafeRouteNavigator from '../src/components/SafeRouteNavigator'
 
 function App() {
   return (
-    <div className="App flex flex-col h-screen overflow-hidden">
-      <header className="bg-gray-800 text-white flex items-center justify-center h-12">
-        <h1>My App</h1>
-      </header>
-      <main className="flex-grow relative">
-        <SafeRouteNavigator />
-      </main>
-      <footer className="bg-gray-800 text-white text-center h-8">
-        &copy; 2023 My App
-      </footer>
-    </div>
+        <Router>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/information" element={<Information />} />
+            <Route path="/safe-route" element={<SafeRouteNavigator />} />
+          </Routes>
+        </Router>
   );
 }
 
