@@ -23,9 +23,7 @@ function App() {
           <Route
             path="/safe-route"
             element={
-              <SignedIn>
                 <SafeRouteNavigator />
-              </SignedIn>
             }
           />
 
